@@ -13,32 +13,29 @@ where
 
 #[derive(Debug)]
 pub enum Response {
-    TxComplete,    // packet sent
+    TxComplete(TimestampMs),    // packet sent
     Txing,         // sending packet
     Rx(RxQuality), // packet received
     Rxing,         // in receiving mode
     Idle,
 }
 
-pub enum Error<'a, R>
-where
-    R: PhyRxTx
+
+pub enum Error
 {
-    Warning(Event<'a, R>), // unhandled event
-    Error(Event<'a, R>),   // error: unhandled event
+    BadState,
     PhyError(PhyError),
 }
 
 use core::convert::From;
 
-impl<'a, R> From<Error<'a, R>> for super::super::Error<'a, R>
-    where
-        R: PhyRxTx {
-    fn from(error: Error<'a, R>) -> Self {
+impl From<Error> for super::super::Error {
+    fn from(error: Error) -> Self {
         super::super::Error::RadioError(error)
     }
 }
 
+#[derive(Debug)]
 pub enum Event<'a, R>
 where
     R: PhyRxTx,
@@ -76,11 +73,11 @@ impl<R> StateWrapper<R>
 where
     R: PhyRxTx,
 {
-    pub fn handle_event<'a>(
+    pub fn handle_event(
         &mut self,
         radio: &mut R,
-        event: Event<'a, R>,
-    ) -> Result<Response, Error<'a, R>> {
+        event: Event<R>,
+    ) -> Result<Response, Error> {
         let (new_state, response) = match &self.radio_state {
             State::Idle(state) => state.handle_event(radio, event),
             State::Txing(state) => state.handle_event(radio, event),
@@ -131,11 +128,11 @@ impl<R> Idle<R>
 where
     R: PhyRxTx,
 {
-    fn handle_event<'a>(
+    fn handle_event(
         mut self,
         radio: &mut R,
-        event: Event<'a, R>,
-        ) -> (State<R>,Result<Response, Error<'a, R>>){
+        event: Event<R>,
+        ) -> (State<R>,Result<Response, Error>){
         match event {
             Event::TxRequest(config, buf) => {
                 radio.configure_tx(config);
@@ -147,7 +144,7 @@ where
                 radio.set_rx();
                 (State::Rxing(self.into()), Ok(Response::Rxing))
             }
-            _ => (State::Idle(self), Err(Error::Warning(event))),
+            _ => (State::Idle(self), Err(Error::BadState)),
         }
     }
 }
@@ -157,21 +154,21 @@ impl<R> Txing<R>
 where
     R: PhyRxTx,
 {
-    fn handle_event<'a>(
+    fn handle_event(
         mut self,
         radio: &mut R,
-        event: Event<'a, R>,
-    ) -> (State<R>,Result<Response, Error<'a, R>>){
+        event: Event<R>,
+    ) -> (State<R>,Result<Response, Error>){
         match event {
             Event::PhyEvent(phyevent) => {
-                if let Some(PhyResponse::TxDone) = radio.handle_phy_event(phyevent) {
-                    (State::Idle(self.into()), Ok(Response::TxComplete))
+                if let Some(PhyResponse::TxDone(timestamp_ms)) = radio.handle_phy_event(phyevent) {
+                    (State::Idle(self.into()), Ok(Response::TxComplete(timestamp_ms)))
                 } else {
                     (State::Txing(self), Ok(Response::Txing))
                 }
             }
-            Event::TxRequest(_, _) => (State::Txing(self), Err(Error::Error(event))),
-            Event::RxRequest(_) => (State::Txing(self), Err(Error::Error(event))),
+            Event::TxRequest(_, _) => (State::Txing(self), Err(Error::BadState)),
+            Event::RxRequest(_) => (State::Txing(self), Err(Error::BadState)),
             Event::Timeout => {
                 if let Err(e) = radio.cancel_tx() {
                     (State::Idle(self.into()), Err(Error::PhyError(e)))
@@ -192,7 +189,7 @@ where
         mut self,
         radio: &mut R,
         event: Event<'a, R>,
-    ) -> (State<R>,Result<Response, Error<'a, R>>){
+    ) -> (State<R>,Result<Response, Error>){
         match event {
             Event::PhyEvent(phyevent) => {
                 if let Some(PhyResponse::RxDone(quality)) = radio.handle_phy_event(phyevent) {
@@ -201,8 +198,8 @@ where
                     (State::Rxing(self), Ok(Response::Rxing))
                 }
             }
-            Event::TxRequest(_, _) => (State::Rxing(self), Err(Error::Error(event))),
-            Event::RxRequest(_) => (State::Rxing(self), Err(Error::Error(event))),
+            Event::TxRequest(_, _) => (State::Rxing(self), Err(Error::BadState)),
+            Event::RxRequest(_) => (State::Rxing(self), Err(Error::BadState)),
             Event::Timeout => {
                 if let Err(e) = radio.cancel_rx() {
                     (State::Idle(self.into()), Err(Error::PhyError(e)))

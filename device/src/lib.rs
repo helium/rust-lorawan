@@ -15,33 +15,25 @@ mod us915;
 use us915::Configuration as RegionalConfiguration;
 
 mod state_machines;
-use state_machines::{no_session, session};
+use state_machines::{Shared, no_session, session};
+
+type TimestampMs = u32;
 
 pub struct Device<R: radio::PhyRxTx + Timings> {
     state: State<R>,
-    shared: Shared<R>,
 }
 
-pub struct Shared <R: radio::PhyRxTx + Timings> {
-    radio: radio::State<R>,
-    credentials: Credentials,
-    region: RegionalConfiguration,
-    mac: Mac,
-    // TODO: do something nicer for randomness
-    get_random: fn() -> u32,
-    buffer: Vec<u8, U256>,
-}
 
 pub enum Response {
+    Idle,
     Rx,         // packet received
     TxComplete, // packet sent
+    TimeoutRequest(TimestampMs)
 }
 
-pub enum Error<'a, R>
-where
-    R: radio::PhyRxTx,
+pub enum Error
 {
-    RadioError(radio::Error<'a, R>), // error: unhandled event
+    RadioError(radio::Error), // error: unhandled event
     SessionError(session::Error),
     NoSessionError(no_session::Error),
 }
@@ -60,16 +52,16 @@ where
     R: radio::PhyRxTx + Timings,
 {
     NoSession(no_session::NoSession<R>),
-    Session(session::Session<R>),
+    //Session(session::Session<R>),
 }
 
 use core::default::Default;
-impl<R> Default for State<R>
+impl<R> State<R>
     where
         R: radio::PhyRxTx + Timings,
 {
-    fn default() -> Self {
-        State::NoSession(no_session::NoSession::default())
+    fn new(shared: Shared<R>) -> Self {
+        State::NoSession(no_session::NoSession::new(shared))
     }
 }
 
@@ -78,7 +70,7 @@ pub trait Timings {
     fn get_rx_window_duration_ms(&mut self) -> usize;
 }
 
-impl<R: radio::PhyRxTx + Timings> Device<R> {
+impl<'a, R: 'a + radio::PhyRxTx + Timings> Device<R> {
     pub fn new(
         deveui: [u8; 8],
         appeui: [u8; 8],
@@ -89,15 +81,14 @@ impl<R: radio::PhyRxTx + Timings> Device<R> {
         region.set_subband(2);
 
         Device {
-            state: State::default(),
-            shared: Shared {
-                radio: radio::State::default(),
-                credentials: Credentials::new(deveui, appeui, appkey),
+            state: State::new(Shared::new(
+                radio::State::default(),
+                Credentials::new(deveui, appeui, appkey),
                 region,
+                Mac::default(),
                 get_random,
-                mac: Mac::default(),
-                buffer: Vec::new(),
-            }
+                Vec::new(),
+            ))
         }
     }
 
@@ -129,16 +120,16 @@ impl<R: radio::PhyRxTx + Timings> Device<R> {
         // };
     }
 
-    pub fn handle_event<'a>(
+    pub fn handle_event(
         mut self,
         radio: &mut R,
-        event: Event<'a, R>,
-    ) -> (Self, Result<Option<Response>, Error<'a, R>>) {
-        let (new_state, response) = match self.state {
-            State::NoSession(state) => state.handle_event(&mut self.shared, radio, event),
-            State::Session(state) => state.handle_event(&mut self.shared, radio, event),
-        };
-        self.state = new_state;
-        (self, response)
+        event: Event<R>,
+    ) -> (Self, Result<Response, Error>) {
+        match self.state {
+            State::NoSession(state) => state.handle_event(radio,event),
+            //State::Session(state) => state.handle_event(radio, event),
+        }
+        // self.state = new_state;
+        // (self, response)
     }
 }

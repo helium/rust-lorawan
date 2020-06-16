@@ -96,10 +96,10 @@ const DOWNLINK_CHANNEL_MAP: [u32; 8] = [
     927_500_000,
 ];
 
-const RECEIVE_DELAY1: usize = 1;
-const RECEIVE_DELAY2: usize = RECEIVE_DELAY1 + 1; // must be RECEIVE_DELAY + 1 s
-const JOIN_ACCEPT_DELAY1: usize = 5;
-const JOIN_ACCEPT_DELAY2: usize = 6;
+const RECEIVE_DELAY1: u32 = 1000;
+const RECEIVE_DELAY2: u32 = RECEIVE_DELAY1 + 1000; // must be RECEIVE_DELAY + 1 s
+const JOIN_ACCEPT_DELAY1: u32 = 5000;
+const JOIN_ACCEPT_DELAY2: u32 = 6000;
 const MAX_FCNT_GAP: usize = 16384;
 const ADR_ACK_LIMIT: usize = 64;
 const ADR_ACK_DELAY: usize = 32;
@@ -147,27 +147,27 @@ impl Configuration {
         UPLINK_CHANNEL_MAP[subband as usize][subband_channel as usize]
     }
 
-    pub fn get_join_accept_frequency1(&mut self) -> u32 {
+    pub fn get_join_accept_frequency1(&self) -> u32 {
         DOWNLINK_CHANNEL_MAP[self.last_tx.1 as usize]
     }
 
-    pub fn get_rxwindow1_frequency(&mut self) -> u32 {
+    pub fn get_rxwindow1_frequency(&self) -> u32 {
         DOWNLINK_CHANNEL_MAP[self.last_tx.1 as usize]
     }
 
-    pub fn get_join_accept_delay1(&mut self) -> usize {
+    pub fn get_join_accept_delay1(&self) -> u32 {
         JOIN_ACCEPT_DELAY1
     }
 
-    pub fn get_join_accept_delay2(&mut self) -> usize {
+    pub fn get_join_accept_delay2(&self) -> u32 {
         JOIN_ACCEPT_DELAY2
     }
 
-    pub fn get_receive_delay1(&mut self) -> usize {
+    pub fn get_receive_delay1(&self) -> u32 {
         RECEIVE_DELAY1
     }
 
-    pub fn get_receive_delay2(&mut self) -> usize {
+    pub fn get_receive_delay2(&self) -> u32 {
         RECEIVE_DELAY2
     }
 }

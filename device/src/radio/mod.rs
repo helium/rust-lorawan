@@ -4,9 +4,11 @@ use heapless::Vec;
 mod types;
 pub use types::*;
 
+use super::TimestampMs;
+
 enum PhyResponse {
     Busy,
-    TxDone,
+    TxDone(TimestampMs),
     RxDone(RxQuality),
     TxError,
     RxError,

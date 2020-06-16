@@ -19,19 +19,18 @@ where
     state: State<R>,
 }
 
-impl<R> Session<R>
-    where
-        R: radio::PhyRxTx + Timings
-{
-    pub fn handle_event<'a>(
-        mut self,
-        shared: &mut Shared<R>,
-        radio: &mut R,
-        event: Event<R>,
-    ) -> (super::super::State<R>, Result<Option<Response>, super::super::Error<'a, R>>) {
-        ( super::super::State::Session(self) , Ok(None))
-    }
-}
+// impl<R> Session<R>
+//     where
+//         R: radio::PhyRxTx + Timings
+// {
+//     pub fn handle_event<'a>(
+//         mut self,
+//         radio: &mut R,
+//         event: Event<R>,
+//     ) -> (Device, Result<Response, super::super::Error<'a, R>>) {
+//         ( super::super::State::Session(self) , Ok(Response::Idle))
+//     }
+// }
 
 struct Idle<R>
 where

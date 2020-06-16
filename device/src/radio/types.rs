@@ -1,9 +1,11 @@
+#[derive(Debug)]
 pub enum Bandwidth {
     _125KHZ,
     _250KHZ,
     _500KHZ,
 }
 
+#[derive(Debug)]
 pub enum SpreadingFactor {
     _7,
     _8,
@@ -13,6 +15,7 @@ pub enum SpreadingFactor {
     _12,
 }
 
+#[derive(Debug)]
 pub enum CodingRate {
     _4_5,
     _4_6,
@@ -20,6 +23,8 @@ pub enum CodingRate {
     _4_8,
 }
 
+
+#[derive(Debug)]
 pub struct RfConfig {
     pub frequency: u32,
     pub bandwidth: Bandwidth,
@@ -27,6 +32,7 @@ pub struct RfConfig {
     pub coding_rate: CodingRate,
 }
 
+#[derive(Debug)]
 pub struct TxConfig {
     pub pw: i8,
     pub rf: RfConfig,
