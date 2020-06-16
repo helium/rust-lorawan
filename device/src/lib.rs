@@ -3,7 +3,7 @@
 use heapless::consts::*;
 use heapless::Vec;
 
-mod radio;
+pub mod radio;
 
 mod mac;
 use mac::Mac;
@@ -28,6 +28,8 @@ pub enum Response {
     Rx,         // packet received
     TxComplete, // packet sent
     TimeoutRequest(TimestampMs),
+    Txing,
+    Rxing,
 }
 
 pub enum Error {
@@ -68,7 +70,7 @@ pub trait Timings {
     fn get_rx_window_duration_ms(&mut self) -> usize;
 }
 
-impl<'a, R: 'a + radio::PhyRxTx + Timings> Device<R> {
+impl<R: radio::PhyRxTx + Timings> Device<R> {
     pub fn new(
         deveui: [u8; 8],
         appeui: [u8; 8],
@@ -90,13 +92,13 @@ impl<'a, R: 'a + radio::PhyRxTx + Timings> Device<R> {
         }
     }
 
-    pub fn send<E: radio::PhyRxTx>(
-        &mut self,
+    pub fn send(
+        self,
         radio: &mut R,
         data: &[u8],
         fport: u8,
         confirmed: bool,
-    ) {
+    )  -> (Self, Result<Response, Error>) {
         // let mut random = 0;//(self.get_random)();
         // let frequency = 0;//self.region.get_join_frequency(random as u8);
         //
@@ -116,6 +118,7 @@ impl<'a, R: 'a + radio::PhyRxTx + Timings> Device<R> {
         // if let Ok(Some(response)) = self.radio.handle_event(radio, event) {
         //     // deal with response
         // };
+        (self, Ok(Response::Txing))
     }
 
     pub fn handle_event(

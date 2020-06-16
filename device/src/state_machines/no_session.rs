@@ -50,9 +50,9 @@ where
     }
 }
 
-impl<'a, R> NoSession<R>
+impl<R> NoSession<R>
 where
-    R: 'a + radio::PhyRxTx + Timings,
+    R: radio::PhyRxTx + Timings,
 {
     pub fn new(shared: Shared<R>) -> NoSession<R> {
         NoSession::Idle(Idle {
@@ -64,8 +64,8 @@ where
 
     pub fn handle_event(
         mut self,
-        radio: &'a mut R,
-        event: Event<'a, R>,
+        radio: &mut R,
+        event: Event<R>,
     ) -> (Device<R>, Result<Response, super::super::Error>) {
         match self {
             NoSession::Idle(state) => state.handle_event(radio, event),
