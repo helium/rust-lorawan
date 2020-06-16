@@ -23,7 +23,6 @@ pub enum CodingRate {
     _4_8,
 }
 
-
 #[derive(Debug)]
 pub struct RfConfig {
     pub frequency: u32,

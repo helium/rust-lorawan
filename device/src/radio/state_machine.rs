@@ -13,16 +13,14 @@ where
 
 #[derive(Debug)]
 pub enum Response {
-    TxComplete(TimestampMs),    // packet sent
-    Txing,         // sending packet
-    Rx(RxQuality), // packet received
-    Rxing,         // in receiving mode
+    TxComplete(TimestampMs), // packet sent
+    Txing,                   // sending packet
+    Rx(RxQuality),           // packet received
+    Rxing,                   // in receiving mode
     Idle,
 }
 
-
-pub enum Error
-{
+pub enum Error {
     BadState,
     PhyError(PhyError),
 }
@@ -73,11 +71,7 @@ impl<R> StateWrapper<R>
 where
     R: PhyRxTx,
 {
-    pub fn handle_event(
-        &mut self,
-        radio: &mut R,
-        event: Event<R>,
-    ) -> Result<Response, Error> {
+    pub fn handle_event(&mut self, radio: &mut R, event: Event<R>) -> Result<Response, Error> {
         let (new_state, response) = match &self.radio_state {
             State::Idle(state) => state.handle_event(radio, event),
             State::Txing(state) => state.handle_event(radio, event),
@@ -132,7 +126,7 @@ where
         mut self,
         radio: &mut R,
         event: Event<R>,
-        ) -> (State<R>,Result<Response, Error>){
+    ) -> (State<R>, Result<Response, Error>) {
         match event {
             Event::TxRequest(config, buf) => {
                 radio.configure_tx(config);
@@ -158,11 +152,14 @@ where
         mut self,
         radio: &mut R,
         event: Event<R>,
-    ) -> (State<R>,Result<Response, Error>){
+    ) -> (State<R>, Result<Response, Error>) {
         match event {
             Event::PhyEvent(phyevent) => {
                 if let Some(PhyResponse::TxDone(timestamp_ms)) = radio.handle_phy_event(phyevent) {
-                    (State::Idle(self.into()), Ok(Response::TxComplete(timestamp_ms)))
+                    (
+                        State::Idle(self.into()),
+                        Ok(Response::TxComplete(timestamp_ms)),
+                    )
                 } else {
                     (State::Txing(self), Ok(Response::Txing))
                 }
@@ -189,7 +186,7 @@ where
         mut self,
         radio: &mut R,
         event: Event<'a, R>,
-    ) -> (State<R>,Result<Response, Error>){
+    ) -> (State<R>, Result<Response, Error>) {
         match event {
             Event::PhyEvent(phyevent) => {
                 if let Some(PhyResponse::RxDone(quality)) = radio.handle_phy_event(phyevent) {

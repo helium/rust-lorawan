@@ -4,7 +4,7 @@ use super::Shared;
 use core::marker::PhantomData;
 use lorawan_encoding::{
     self,
-    creator::{JoinRequestCreator},
+    creator::JoinRequestCreator,
     keys::AES128,
     parser::DevAddr,
     parser::{parse as lorawan_parse, *},
@@ -20,7 +20,6 @@ where
     WaitingForJoinResponse(WaitingForJoinResponse<R>),
 }
 
-
 macro_rules! into_state {
     ($($from:tt),*) => {
     $(
@@ -35,19 +34,25 @@ macro_rules! into_state {
     )*};
 }
 
-into_state![Idle, SendingJoin, WaitingForRxWindow, WaitingForJoinResponse];
+into_state![
+    Idle,
+    SendingJoin,
+    WaitingForRxWindow,
+    WaitingForJoinResponse
+];
 
 impl<R> From<NoSession<R>> for SuperState<R>
-    where
-        R: radio::PhyRxTx + Timings,{
+where
+    R: radio::PhyRxTx + Timings,
+{
     fn from(no_session: NoSession<R>) -> SuperState<R> {
         SuperState::NoSession(no_session)
     }
 }
 
 impl<'a, R> NoSession<R>
-    where
-        R: 'a + radio::PhyRxTx + Timings,
+where
+    R: 'a + radio::PhyRxTx + Timings,
 {
     pub fn new(shared: Shared<R>) -> NoSession<R> {
         NoSession::Idle(Idle {
@@ -76,8 +81,8 @@ pub enum Error {}
 type DevNonce = lorawan_encoding::parser::DevNonce<[u8; 2]>;
 
 pub struct Idle<R>
-    where
-        R: radio::PhyRxTx + Timings,
+where
+    R: radio::PhyRxTx + Timings,
 {
     shared: Shared<R>,
     join_attempts: usize,
@@ -88,7 +93,6 @@ impl<'a, R> Idle<R>
 where
     R: radio::PhyRxTx + Timings,
 {
-
     pub fn handle_event(
         mut self,
         radio: &'a mut R,
@@ -98,10 +102,8 @@ where
             // NewSession Request or a Timeout from previously failed Join attempt
             Event::NewSession | Event::Timeout => {
                 let (devnonce, tx_config) = self.create_join_request();
-                let radio_event: radio::Event<R> = radio::Event::TxRequest(
-                    tx_config,
-                    &mut self.shared.buffer,
-                );
+                let radio_event: radio::Event<R> =
+                    radio::Event::TxRequest(tx_config, &mut self.shared.buffer);
 
                 // send the transmit request to the radio
                 match self.shared.radio.handle_event(radio, radio_event) {
@@ -115,29 +117,28 @@ where
                             // directly jump to waiting for RxWindow
                             // allows for synchronous sending
                             radio::Response::TxComplete(ms) => {
-
                                 let time = join_rx_window_timeout(&self.shared.region, ms);
 
-                                (self.to_waiting_rxwindow(devnonce).into(),
-                                 Ok(Response::TimeoutRequest(time)))
+                                (
+                                    self.to_waiting_rxwindow(devnonce).into(),
+                                    Ok(Response::TimeoutRequest(time)),
+                                )
                             }
                             _ => {
-                                panic ! ("Unexpected radio response: {:?}", response);
+                                panic!("Unexpected radio response: {:?}", response);
                             }
                         }
                     }
-                    Err(e) => {
-                        (self.into(), Err(e.into()))
-                    }
+                    Err(e) => (self.into(), Err(e.into())),
                 }
             }
             Event::RadioEvent(radio_event) => {
-                panic! ("Unexpected radio event while Idle");
+                panic!("Unexpected radio event while Idle");
             }
         }
     }
 
-    fn create_join_request(&mut self) -> (DevNonce, radio::TxConfig ) {
+    fn create_join_request(&mut self) -> (DevNonce, radio::TxConfig) {
         let mut random = (self.shared.get_random)();
         // use lowest 16 bits for devnonce
         let devnonce_bytes = random as u16;
@@ -163,14 +164,14 @@ where
         let frequency = self.shared.region.get_join_frequency(random as u8);
 
         let tx_config = radio::TxConfig {
-                pw: 20,
-                rf: radio::RfConfig {
-                    frequency,
-                    bandwidth: radio::Bandwidth::_125KHZ,
-                    spreading_factor: radio::SpreadingFactor::_10,
-                    coding_rate: radio::CodingRate::_4_5,
-                },
-            };
+            pw: 20,
+            rf: radio::RfConfig {
+                frequency,
+                bandwidth: radio::Bandwidth::_125KHZ,
+                spreading_factor: radio::SpreadingFactor::_10,
+                coding_rate: radio::CodingRate::_4_5,
+            },
+        };
         (devnonce_copy, tx_config)
     }
 
@@ -195,7 +196,7 @@ where
 
 pub struct SendingJoin<R>
 where
-    R: radio::PhyRxTx + Timings
+    R: radio::PhyRxTx + Timings,
 {
     shared: Shared<R>,
     join_attempts: usize,
@@ -203,64 +204,58 @@ where
     devnonce: DevNonce,
 }
 
-
-impl<R>  SendingJoin<R>
-    where
-        R: radio::PhyRxTx + Timings,
+impl<R> SendingJoin<R>
+where
+    R: radio::PhyRxTx + Timings,
 {
     pub fn handle_event(
-    mut self,
-    radio: &mut R,
-    event: Event<R>,
+        mut self,
+        radio: &mut R,
+        event: Event<R>,
     ) -> (Device<R>, Result<Response, super::super::Error>) {
         match event {
             // we are waiting for the async tx to complete
             Event::RadioEvent(radio_event) => {
                 // send the transmit request to the radio
-                match self.shared.radio.handle_event(radio, radio_event){
+                match self.shared.radio.handle_event(radio, radio_event) {
                     Ok(response) => {
                         match response {
                             radio::Response::TxComplete(ms) => {
                                 let time = join_rx_window_timeout(&self.shared.region, ms);
-                                (self.into(),
-                                 Ok(Response::TimeoutRequest(time)))
+                                (self.into(), Ok(Response::TimeoutRequest(time)))
                             }
                             // anything other than TxComplete is unexpected
                             _ => {
-                                panic ! ("Unexpected radio response: {:?}", response);
+                                panic!("Unexpected radio response: {:?}", response);
                             }
                         }
                     }
-                    Err(e) => {
-                        (self.into(), Err(e.into()))
-                    }
+                    Err(e) => (self.into(), Err(e.into())),
                 }
             }
             // anything other than a RadioEvent is unexpected
-            Event::NewSession | Event::Timeout => {
-                panic!("Unexpected event while SendingJoin")
-            }
+            Event::NewSession | Event::Timeout => panic!("Unexpected event while SendingJoin"),
         }
     }
 }
 
 impl<R> From<SendingJoin<R>> for WaitingForRxWindow<R>
-    where
-        R: radio::PhyRxTx + Timings
+where
+    R: radio::PhyRxTx + Timings,
 {
     fn from(val: SendingJoin<R>) -> WaitingForRxWindow<R> {
         WaitingForRxWindow {
             shared: val.shared,
             join_attempts: val.join_attempts,
             radio: val.radio,
-            devnonce:  val.devnonce,
+            devnonce: val.devnonce,
         }
     }
 }
 
 pub struct WaitingForRxWindow<R>
-    where
-        R: radio::PhyRxTx + Timings
+where
+    R: radio::PhyRxTx + Timings,
 {
     shared: Shared<R>,
     join_attempts: usize,
@@ -268,9 +263,9 @@ pub struct WaitingForRxWindow<R>
     devnonce: DevNonce,
 }
 
-impl<R>  WaitingForRxWindow<R>
-    where
-        R: radio::PhyRxTx + Timings,
+impl<R> WaitingForRxWindow<R>
+where
+    R: radio::PhyRxTx + Timings,
 {
     pub fn handle_event<'a>(
         mut self,
@@ -287,7 +282,11 @@ impl<R>  WaitingForRxWindow<R>
                     coding_rate: radio::CodingRate::_4_5,
                 };
                 // configure the radio for the RX
-                match self.shared.radio.handle_event(radio, radio::Event::RxRequest(rx_config)) {
+                match self
+                    .shared
+                    .radio
+                    .handle_event(radio, radio::Event::RxRequest(rx_config))
+                {
                     // TODO: pass timeout
                     Ok(_) => (self.into(), Ok(Response::Idle)),
                     Err(e) => (self.into(), Err(e.into())),
@@ -302,8 +301,8 @@ impl<R>  WaitingForRxWindow<R>
 }
 
 impl<R> From<WaitingForRxWindow<R>> for WaitingForJoinResponse<R>
-    where
-        R: radio::PhyRxTx + Timings
+where
+    R: radio::PhyRxTx + Timings,
 {
     fn from(val: WaitingForRxWindow<R>) -> WaitingForJoinResponse<R> {
         WaitingForJoinResponse {
@@ -316,8 +315,8 @@ impl<R> From<WaitingForRxWindow<R>> for WaitingForJoinResponse<R>
 }
 
 pub struct WaitingForJoinResponse<R>
-    where
-    R: radio::PhyRxTx + Timings
+where
+    R: radio::PhyRxTx + Timings,
 {
     shared: Shared<R>,
     join_attempts: usize,
@@ -325,22 +324,22 @@ pub struct WaitingForJoinResponse<R>
     devnonce: DevNonce,
 }
 
-impl<R>  WaitingForJoinResponse<R>
-    where
-        R: radio::PhyRxTx + Timings,
+impl<R> WaitingForJoinResponse<R>
+where
+    R: radio::PhyRxTx + Timings,
 {
     pub fn handle_event<'a>(
-    self,
-    radio: &mut R,
-    event: Event<R>,
+        self,
+        radio: &mut R,
+        event: Event<R>,
     ) -> (Device<R>, Result<Response, super::super::Error>) {
-        (self.into() , Ok(Response::Idle))
+        (self.into(), Ok(Response::Idle))
     }
 }
 
 impl<R> From<WaitingForJoinResponse<R>> for Idle<R>
-    where
-        R: radio::PhyRxTx + Timings,
+where
+    R: radio::PhyRxTx + Timings,
 {
     fn from(val: WaitingForJoinResponse<R>) -> Idle<R> {
         Idle {
@@ -351,8 +350,6 @@ impl<R> From<WaitingForJoinResponse<R>> for Idle<R>
     }
 }
 
-fn join_rx_window_timeout(region: &RegionalConfiguration, timestamp_ms: TimestampMs)  -> u32 {
+fn join_rx_window_timeout(region: &RegionalConfiguration, timestamp_ms: TimestampMs) -> u32 {
     region.get_join_accept_delay1() + timestamp_ms
 }
-
-

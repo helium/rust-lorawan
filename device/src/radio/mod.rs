@@ -21,7 +21,7 @@ pub enum PhyError {
 
 mod state_machine;
 
-pub use state_machine::{Error, Event, StateWrapper as State, Response};
+pub use state_machine::{Error, Event, Response, StateWrapper as State};
 
 pub trait PhyRxTx {
     type PhyEvent;

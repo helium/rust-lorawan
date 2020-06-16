@@ -15,7 +15,7 @@ mod us915;
 use us915::Configuration as RegionalConfiguration;
 
 mod state_machines;
-use state_machines::{Shared, no_session, session};
+use state_machines::{no_session, session, Shared};
 
 type TimestampMs = u32;
 
@@ -23,16 +23,14 @@ pub struct Device<R: radio::PhyRxTx + Timings> {
     state: State<R>,
 }
 
-
 pub enum Response {
     Idle,
     Rx,         // packet received
     TxComplete, // packet sent
-    TimeoutRequest(TimestampMs)
+    TimeoutRequest(TimestampMs),
 }
 
-pub enum Error
-{
+pub enum Error {
     RadioError(radio::Error), // error: unhandled event
     SessionError(session::Error),
     NoSessionError(no_session::Error),
@@ -57,8 +55,8 @@ where
 
 use core::default::Default;
 impl<R> State<R>
-    where
-        R: radio::PhyRxTx + Timings,
+where
+    R: radio::PhyRxTx + Timings,
 {
     fn new(shared: Shared<R>) -> Self {
         State::NoSession(no_session::NoSession::new(shared))
@@ -88,7 +86,7 @@ impl<'a, R: 'a + radio::PhyRxTx + Timings> Device<R> {
                 Mac::default(),
                 get_random,
                 Vec::new(),
-            ))
+            )),
         }
     }
 
@@ -126,7 +124,7 @@ impl<'a, R: 'a + radio::PhyRxTx + Timings> Device<R> {
         event: Event<R>,
     ) -> (Self, Result<Response, Error>) {
         match self.state {
-            State::NoSession(state) => state.handle_event(radio,event),
+            State::NoSession(state) => state.handle_event(radio, event),
             //State::Session(state) => state.handle_event(radio, event),
         }
         // self.state = new_state;
