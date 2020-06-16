@@ -3,6 +3,7 @@ use lorawan_encoding::keys::AES128;
 pub type AppEui = [u8; 8];
 pub type DevEui = [u8; 8];
 
+#[derive(Debug)]
 pub struct Credentials {
     deveui: DevEui,
     appeui: AppEui,
@@ -23,7 +24,7 @@ impl Credentials {
     }
 
     pub fn deveui(&self) -> &DevEui {
-        &self.appeui
+        &self.deveui
     }
 
     pub fn appkey(&self) -> &AES128 {

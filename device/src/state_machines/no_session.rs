@@ -112,7 +112,7 @@ where
                             // intermediate state where we wait for Join to complete sending
                             // allows for asynchronous sending
                             radio::Response::Txing => {
-                                (self.to_sending_join(devnonce).into(), Ok(Response::Idle))
+                                (self.to_sending_join(devnonce).into(), Ok(Response::Txing))
                             }
                             // directly jump to waiting for RxWindow
                             // allows for synchronous sending
@@ -155,9 +155,9 @@ where
         let vec = phy.build(&creds.appkey()).unwrap();
 
         let devnonce_copy = DevNonce::new(devnonce).unwrap();
-        for el in vec {
-            self.shared.buffer.push(*el).unwrap();
-        }
+
+        self.shared.buffer.extend(vec);
+
 
         // we'll use the rest for frequency and subband selection
         random >>= 16;
@@ -221,16 +221,24 @@ where
                     Ok(response) => {
                         match response {
                             radio::Response::TxComplete(ms) => {
+                                println!("Time {}", ms);
                                 let time = join_rx_window_timeout(&self.shared.region, ms);
+                                println!("Time {}", time);
+
                                 (self.into(), Ok(Response::TimeoutRequest(time)))
                             }
+                            // tolerate idle
+                            radio::Response::Idle => (self.into(), Ok(Response::Idle)),
                             // anything other than TxComplete is unexpected
                             _ => {
                                 panic!("Unexpected radio response: {:?}", response);
                             }
                         }
                     }
-                    Err(e) => (self.into(), Err(e.into())),
+                    Err(e) => {
+                        panic!("HERE PANIC");
+                        (self.into(), Err(e.into()))
+                    },
                 }
             }
             // anything other than a RadioEvent is unexpected

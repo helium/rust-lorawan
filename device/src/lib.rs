@@ -1,4 +1,4 @@
-#![no_std]
+//#![no_std]
 
 use heapless::consts::*;
 use heapless::Vec;
@@ -83,7 +83,7 @@ impl<R: radio::PhyRxTx + Timings> Device<R> {
         Device {
             state: State::new(Shared::new(
                 radio::State::default(),
-                Credentials::new(deveui, appeui, appkey),
+                Credentials::new(appeui, deveui, appkey),
                 region,
                 Mac::default(),
                 get_random,

@@ -130,7 +130,9 @@ where
         match event {
             Event::TxRequest(config, buf) => {
                 radio.configure_tx(config);
-                radio.send(buf.as_mut());
+
+                let len = buf.len();
+                radio.send(buf[..len].as_mut());
                 (State::Txing(self.into()), Ok(Response::Txing))
             }
             Event::RxRequest(rfconfig) => {
@@ -138,7 +140,12 @@ where
                 radio.set_rx();
                 (State::Rxing(self.into()), Ok(Response::Rxing))
             }
-            _ => (State::Idle(self), Err(Error::BadState)),
+            Event::PhyEvent(phyevent) => {
+                (State::Idle(self), Ok(Response::Idle))
+            },
+            _ => {
+                panic!("Timout when idle?");
+            }
         }
     }
 }
