@@ -41,7 +41,6 @@ where
     TxRequest(TxConfig, &'a mut Vec<u8, U256>),
     RxRequest(RfConfig),
     PhyEvent(R::PhyEvent),
-    Timeout,
 }
 
 #[derive(Copy, Clone)]
@@ -173,13 +172,6 @@ where
             }
             Event::TxRequest(_, _) => (State::Txing(self), Err(Error::BadState)),
             Event::RxRequest(_) => (State::Txing(self), Err(Error::BadState)),
-            Event::Timeout => {
-                if let Err(e) = radio.cancel_tx() {
-                    (State::Idle(self.into()), Err(Error::PhyError(e)))
-                } else {
-                    (State::Idle(self.into()), Ok(Response::Idle))
-                }
-            }
         }
     }
 }
@@ -204,13 +196,6 @@ where
             }
             Event::TxRequest(_, _) => (State::Rxing(self), Err(Error::BadState)),
             Event::RxRequest(_) => (State::Rxing(self), Err(Error::BadState)),
-            Event::Timeout => {
-                if let Err(e) = radio.cancel_rx() {
-                    (State::Idle(self.into()), Err(Error::PhyError(e)))
-                } else {
-                    (State::Idle(self.into()), Ok(Response::Idle))
-                }
-            }
         }
     }
 }

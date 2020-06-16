@@ -114,7 +114,7 @@ where
                             // intermediate state where we wait for Join to complete sending
                             // allows for asynchronous sending
                             radio::Response::Txing => {
-                                (self.to_sending_join(devnonce).into(), Ok(Response::Txing))
+                                (self.to_sending_join(devnonce).into(), Ok(Response::SendingJoinRequest))
                             }
                             // directly jump to waiting for RxWindow
                             // allows for synchronous sending
@@ -225,7 +225,7 @@ where
                             // expect a complete transmit
                             radio::Response::TxComplete(ms) => {
                                 let time = join_rx_window_timeout(&self.shared.region, ms);
-                                (self.into(), Ok(Response::TimeoutRequest(time)))
+                                (WaitingForRxWindow::from(self).into(), Ok(Response::TimeoutRequest(time)))
                             }
                             // tolerate idle
                             radio::Response::Idle => (self.into(), Ok(Response::Idle)),
@@ -295,7 +295,7 @@ where
                     .handle_event(radio, radio::Event::RxRequest(rx_config))
                 {
                     // TODO: pass timeout
-                    Ok(_) => (self.into(), Ok(Response::Idle)),
+                    Ok(_) => (WaitingForJoinResponse::from(self).into(), Ok(Response::WaitingForJoinAccept)),
                     Err(e) => (self.into(), Err(e.into())),
                 }
             }
@@ -363,14 +363,13 @@ where
                                         }
                                     }
                                 }
-                                (self.into(), Ok(Response::Idle))
+                                (self.into(), Ok(Response::WaitingForJoinAccept))
                             }
-                            _ => (self.into(), Ok(Response::Idle)),
+                            _ => (self.into(), Ok(Response::WaitingForJoinAccept)),
 
                         }
                     }
                     Err(e) => {
-                        panic!("HERE PANIC");
                         (self.into(), Err(e.into()))
                     },
                 }

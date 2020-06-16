@@ -23,12 +23,14 @@ pub struct Device<R: radio::PhyRxTx + Timings> {
     state: State<R>,
 }
 
+#[derive(Debug)]
 pub enum Response {
     Idle,
     Rx,         // packet received
     TxComplete, // packet sent
     TimeoutRequest(TimestampMs),
-    Txing,
+    SendingJoinRequest,
+    WaitingForJoinAccept,
     Rxing,
     NewSession,
 }
@@ -119,7 +121,7 @@ impl<R: radio::PhyRxTx + Timings> Device<R> {
         // if let Ok(Some(response)) = self.radio.handle_event(radio, event) {
         //     // deal with response
         // };
-        (self, Ok(Response::Txing))
+        (self, Ok(Response::Idle))
     }
 
     pub fn handle_event(
