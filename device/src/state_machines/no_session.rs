@@ -1,5 +1,6 @@
 use super::super::State as SuperState;
 use super::super::*;
+use super::super::session::Session;
 use super::Shared;
 use core::marker::PhantomData;
 use lorawan_encoding::{
@@ -9,6 +10,7 @@ use lorawan_encoding::{
     parser::DevAddr,
     parser::{parse as lorawan_parse, *},
 };
+
 
 pub enum NoSession<R>
 where
@@ -220,11 +222,9 @@ where
                 match self.shared.radio.handle_event(radio, radio_event) {
                     Ok(response) => {
                         match response {
+                            // expect a complete transmit
                             radio::Response::TxComplete(ms) => {
-                                println!("Time {}", ms);
                                 let time = join_rx_window_timeout(&self.shared.region, ms);
-                                println!("Time {}", time);
-
                                 (self.into(), Ok(Response::TimeoutRequest(time)))
                             }
                             // tolerate idle
@@ -236,7 +236,6 @@ where
                         }
                     }
                     Err(e) => {
-                        panic!("HERE PANIC");
                         (self.into(), Err(e.into()))
                     },
                 }
@@ -337,11 +336,48 @@ where
     R: radio::PhyRxTx + Timings,
 {
     pub fn handle_event<'a>(
-        self,
+        mut self,
         radio: &mut R,
         event: Event<R>,
     ) -> (Device<R>, Result<Response, super::super::Error>) {
-        (self.into(), Ok(Response::Idle))
+        match event {
+            // we are waiting for the async tx to complete
+            Event::RadioEvent(radio_event) => {
+                // send the transmit request to the radio
+                match self.shared.radio.handle_event(radio, radio_event) {
+                    Ok(response) => {
+                        match response {
+                            radio::Response::Rx(quality) => {
+                                let packet = lorawan_parse(radio.get_received_packet()).unwrap();
+
+                                if let PhyPayload::JoinAccept(join_accept) = packet {
+                                    if let JoinAcceptPayload::Encrypted(encrypted) = join_accept {
+                                        let credentials = &self.shared.credentials;
+
+                                        let decrypt = encrypted.decrypt(credentials.appkey());
+                                        if decrypt.validate_mic(credentials.appkey()) {
+                                            let session = SessionData::derive_new(&decrypt, &self.devnonce, credentials);
+                                            return (
+                                                Session::new(self.shared, session),   Ok(Response::NewSession)
+                                            );
+                                        }
+                                    }
+                                }
+                                (self.into(), Ok(Response::Idle))
+                            }
+                            _ => (self.into(), Ok(Response::Idle)),
+
+                        }
+                    }
+                    Err(e) => {
+                        panic!("HERE PANIC");
+                        (self.into(), Err(e.into()))
+                    },
+                }
+            }
+            // anything other than a RadioEvent is unexpected
+            Event::NewSession | Event::Timeout => panic!("Unexpected event while SendingJoin"),
+        }
     }
 }
 
@@ -354,6 +390,35 @@ where
             shared: val.shared,
             radio: val.radio,
             join_attempts: val.join_attempts,
+        }
+    }
+}
+
+
+pub struct SessionData
+{
+    newskey: AES128,
+    appskey: AES128,
+    devaddr: DevAddr<[u8; 4]>,
+    fcnt: u32,
+}
+
+
+impl SessionData {
+    pub fn derive_new<T: std::convert::AsRef<[u8]>,F: lorawan_encoding::keys::CryptoFactory>(decrypt: &DecryptedJoinAcceptPayload<T,F>, devnonce: &DevNonce, credentials: &Credentials) -> SessionData{
+        SessionData {
+            newskey: decrypt
+                .derive_newskey(devnonce, credentials.appkey()),
+            appskey: decrypt
+                .derive_appskey(devnonce, credentials.appkey()),
+            devaddr: DevAddr::new([
+                decrypt.dev_addr().as_ref()[0],
+                decrypt.dev_addr().as_ref()[1],
+                decrypt.dev_addr().as_ref()[2],
+                decrypt.dev_addr().as_ref()[3],
+            ])
+                .unwrap(),
+            fcnt: 0,
         }
     }
 }

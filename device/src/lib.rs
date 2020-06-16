@@ -30,6 +30,7 @@ pub enum Response {
     TimeoutRequest(TimestampMs),
     Txing,
     Rxing,
+    NewSession,
 }
 
 pub enum Error {
@@ -52,7 +53,7 @@ where
     R: radio::PhyRxTx + Timings,
 {
     NoSession(no_session::NoSession<R>),
-    //Session(session::Session<R>),
+    Session(session::Session<R>),
 }
 
 use core::default::Default;
@@ -128,7 +129,7 @@ impl<R: radio::PhyRxTx + Timings> Device<R> {
     ) -> (Self, Result<Response, Error>) {
         match self.state {
             State::NoSession(state) => state.handle_event(radio, event),
-            //State::Session(state) => state.handle_event(radio, event),
+            State::Session(state) => state.handle_event(radio, event),
         }
         // self.state = new_state;
         // (self, response)
