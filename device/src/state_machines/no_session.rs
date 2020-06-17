@@ -60,7 +60,6 @@ where
         NoSession::Idle(Idle {
             shared,
             join_attempts: 0,
-            radio: PhantomData::default(),
         })
     }
 
@@ -88,7 +87,6 @@ where
 {
     shared: Shared<R>,
     join_attempts: usize,
-    radio: PhantomData<R>,
 }
 
 impl<'a, R> Idle<R>
@@ -135,7 +133,10 @@ where
                 }
             }
             Event::RadioEvent(radio_event) => {
-                panic!("Unexpected radio event while Idle");
+                panic!("Unexpected radio event while NoSession::Idle");
+            }
+            Event::SendData(_) => {
+                panic!("Unexpected transmit data event while NoSession::Idle");
             }
         }
     }
@@ -180,7 +181,6 @@ where
     fn to_sending_join(self, devnonce: DevNonce) -> SendingJoin<R> {
         SendingJoin {
             shared: self.shared,
-            radio: self.radio,
             join_attempts: self.join_attempts + 1,
             devnonce,
         }
@@ -189,7 +189,6 @@ where
     fn to_waiting_rxwindow(self, devnonce: DevNonce) -> WaitingForRxWindow<R> {
         WaitingForRxWindow {
             shared: self.shared,
-            radio: self.radio,
             join_attempts: self.join_attempts + 1,
             devnonce,
         }
@@ -202,7 +201,6 @@ where
 {
     shared: Shared<R>,
     join_attempts: usize,
-    radio: PhantomData<R>,
     devnonce: DevNonce,
 }
 
@@ -241,7 +239,7 @@ where
                 }
             }
             // anything other than a RadioEvent is unexpected
-            Event::NewSession | Event::Timeout => panic!("Unexpected event while SendingJoin"),
+            Event::NewSession | Event::Timeout | Event::SendData(_) => panic!("Unexpected event while SendingJoin"),
         }
     }
 }
@@ -254,7 +252,6 @@ where
         WaitingForRxWindow {
             shared: val.shared,
             join_attempts: val.join_attempts,
-            radio: val.radio,
             devnonce: val.devnonce,
         }
     }
@@ -266,7 +263,6 @@ where
 {
     shared: Shared<R>,
     join_attempts: usize,
-    radio: PhantomData<R>,
     devnonce: DevNonce,
 }
 
@@ -300,7 +296,7 @@ where
                 }
             }
             // anything other than a Timeout is unexpected
-            Event::NewSession | Event::RadioEvent(_) => {
+            Event::NewSession | Event::RadioEvent(_) | Event::SendData(_) => {
                 panic!("Unexpected event while WaitingForRxWindow")
             }
         }
@@ -314,7 +310,6 @@ where
     fn from(val: WaitingForRxWindow<R>) -> WaitingForJoinResponse<R> {
         WaitingForJoinResponse {
             shared: val.shared,
-            radio: val.radio,
             join_attempts: val.join_attempts,
             devnonce: val.devnonce,
         }
@@ -327,7 +322,6 @@ where
 {
     shared: Shared<R>,
     join_attempts: usize,
-    radio: PhantomData<R>,
     devnonce: DevNonce,
 }
 
@@ -375,7 +369,7 @@ where
                 }
             }
             // anything other than a RadioEvent is unexpected
-            Event::NewSession | Event::Timeout => panic!("Unexpected event while SendingJoin"),
+            Event::NewSession | Event::Timeout | Event::SendData(_) => panic!("Unexpected event while SendingJoin"),
         }
     }
 }
@@ -387,7 +381,6 @@ where
     fn from(val: WaitingForJoinResponse<R>) -> Idle<R> {
         Idle {
             shared: val.shared,
-            radio: val.radio,
             join_attempts: val.join_attempts,
         }
     }
@@ -419,6 +412,27 @@ impl SessionData {
                 .unwrap(),
             fcnt: 0,
         }
+    }
+
+    pub fn newskey(&self) -> &AES128 {
+        &self.newskey
+    }
+
+    pub fn appskey(&self) -> &AES128 {
+        &self.appskey
+    }
+
+    pub fn devaddr(&self) -> &DevAddr<[u8; 4]> {
+        &self.devaddr
+    }
+
+    pub fn fcnt(&self) -> u32 {
+        self.fcnt
+    }
+
+
+    pub fn fcnt_up(&mut self) {
+        self.fcnt += 1;
     }
 }
 

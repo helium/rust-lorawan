@@ -1,5 +1,4 @@
 use super::*;
-use core::marker::PhantomData;
 
 pub mod no_session;
 use no_session::NoSession;

@@ -33,6 +33,7 @@ pub enum Response {
     WaitingForJoinAccept,
     Rxing,
     NewSession,
+    SendingDataUp,
 }
 
 pub enum Error {
@@ -41,6 +42,8 @@ pub enum Error {
     NoSessionError(no_session::Error),
 }
 
+type Confirmed = bool;
+
 pub enum Event<'a, R>
 where
     R: radio::PhyRxTx,
@@ -48,6 +51,13 @@ where
     NewSession,
     RadioEvent(radio::Event<'a, R>),
     Timeout,
+    SendData(SendData<'a>),
+}
+
+pub struct SendData<'a> {
+    data: &'a [u8],
+    fport: u8,
+    confirmed: bool,
 }
 
 pub enum State<R>
@@ -102,26 +112,12 @@ impl<R: radio::PhyRxTx + Timings> Device<R> {
         fport: u8,
         confirmed: bool,
     )  -> (Self, Result<Response, Error>) {
-        // let mut random = 0;//(self.get_random)();
-        // let frequency = 0;//self.region.get_join_frequency(random as u8);
-        //
-        // let event: radio::Event<R> = radio::Event::TxRequest(
-        //     radio::TxConfig {
-        //         pw: 20,
-        //         rf: radio::RfConfig {
-        //             frequency,
-        //             bandwidth: radio::Bandwidth::_125KHZ,
-        //             spreading_factor: radio::SpreadingFactor::_10,
-        //             coding_rate: radio::CodingRate::_4_5,
-        //         },
-        //     },
-        //     &mut self.buffer,
-        // );
-        //
-        // if let Ok(Some(response)) = self.radio.handle_event(radio, event) {
-        //     // deal with response
-        // };
-        (self, Ok(Response::Idle))
+
+        self.handle_event(radio,Event::SendData(SendData {
+            data,
+            fport,
+            confirmed,
+        }))
     }
 
     pub fn handle_event(

@@ -15,3 +15,4 @@ description = "A Rust LoRaWAN device stack implementation"
 [dependencies]
 lorawan-encoding = { path = "../encoding", default-features = false, features = ["default-crypto"] }
 heapless = "0.5.4"
+as-slice = "*"
