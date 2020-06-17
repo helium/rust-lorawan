@@ -1,0 +1,82 @@
+[1mdiff --git a/device/src/radio/state_machine.rs b/device/src/radio/state_machine.rs[m
+[1mindex fcc7f1f..a2aab15 100644[m
+[1m--- a/device/src/radio/state_machine.rs[m
+[1m+++ b/device/src/radio/state_machine.rs[m
+[36m@@ -129,7 +129,6 @@[m [mwhere[m
+         match event {[m
+             Event::TxRequest(config, buf) => {[m
+                 radio.configure_tx(config);[m
+[31m-[m
+                 let len = buf.len();[m
+                 radio.send(buf[..len].as_mut());[m
+                 (State::Txing(self.into()), Ok(Response::Txing))[m
+[1mdiff --git a/device/src/state_machines/no_session.rs b/device/src/state_machines/no_session.rs[m
+[1mindex e32d8b9..394b9cf 100644[m
+[1m--- a/device/src/state_machines/no_session.rs[m
+[1m+++ b/device/src/state_machines/no_session.rs[m
+[36m@@ -392,7 +392,8 @@[m [mpub struct SessionData[m
+     newskey: AES128,[m
+     appskey: AES128,[m
+     devaddr: DevAddr<[u8; 4]>,[m
+[31m-    fcnt: u32,[m
+[32m+[m[32m    fcnt_up: u32,[m
+[32m+[m[32m    pub fcnt_down: u32,[m
+ }[m
+ [m
+ [m
+[36m@@ -410,7 +411,8 @@[m [mimpl SessionData {[m
+                 decrypt.dev_addr().as_ref()[3],[m
+             ])[m
+                 .unwrap(),[m
+[31m-            fcnt: 0,[m
+[32m+[m[32m            fcnt_up: 0,[m
+[32m+[m[32m            fcnt_down: 0,[m
+         }[m
+     }[m
+ [m
+[36m@@ -426,12 +428,12 @@[m [mimpl SessionData {[m
+         &self.devaddr[m
+     }[m
+ [m
+[31m-    pub fn fcnt(&self) -> u32 {[m
+[31m-        self.fcnt[m
+[32m+[m[32m    pub fn fcnt_up(&self) -> u32 {[m
+[32m+[m[32m        self.fcnt_up[m
+     }[m
+ [m
+[31m-    pub fn fcnt_up(&mut self) {[m
+[31m-        self.fcnt += 1;[m
+[32m+[m[32m    pub fn fcnt_up_increment(&mut self) {[m
+[32m+[m[32m        self.fcnt_up += 1;[m
+     }[m
+ }[m
+ [m
+[1mdiff --git a/device/src/state_machines/session.rs b/device/src/state_machines/session.rs[m
+[1mindex 8539a2d..c706613 100644[m
+[1m--- a/device/src/state_machines/session.rs[m
+[1m+++ b/device/src/state_machines/session.rs[m
+[36m@@ -81,7 +81,7 @@[m [mimpl<'a, R> Idle<R>[m
+         phy.set_confirmed(data.confirmed)[m
+             .set_f_port(data.fport)[m
+             .set_dev_addr(self.session.devaddr().clone())[m
+[31m-            .set_fcnt(self.session.fcnt());[m
+[32m+[m[32m            .set_fcnt(self.session.fcnt_up());[m
+ [m
+         let mut cmds = Vec::new();[m
+         self.shared.mac.get_cmds(&mut cmds);[m
+[36m@@ -347,10 +347,13 @@[m [mimpl<'a, R> WaitingForRx<R>[m
+                                 let packet = lorawan_parse(radio.get_received_packet()).unwrap();[m
+                                 if let PhyPayload::Data(data_frame) = packet {[m
+                                     if let DataPayload::Encrypted(encrypted_data) = data_frame {[m
+[31m-                                        let session = &self.session;[m
+[32m+[m[32m                                        let session = &mut self.session;[m
+                                         if session.devaddr() == &encrypted_data.fhdr().dev_addr() {[m
+                                             let fcnt = encrypted_data.fhdr().fcnt() as u32;[m
+[31m-                                            if encrypted_data.validate_mic(&session.newskey(), fcnt) {[m
+[32m+[m[32m                                            if encrypted_data.validate_mic(&session.newskey(), fcnt)[m
+[32m+[m[32m                                            && fcnt > session.fcnt_down {[m
+[32m+[m
+[32m+[m[32m                                                session.fcnt_down = fcnt;[m
+                                                 let decrypted = encrypted_data[m
+                                                     .decrypt([m
+                                                         Some(&session.newskey()),[m

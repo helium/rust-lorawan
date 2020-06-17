@@ -392,7 +392,8 @@ pub struct SessionData
     newskey: AES128,
     appskey: AES128,
     devaddr: DevAddr<[u8; 4]>,
-    fcnt: u32,
+    fcnt_up: u32,
+    pub fcnt_down: u32,
 }
 
 
@@ -410,7 +411,8 @@ impl SessionData {
                 decrypt.dev_addr().as_ref()[3],
             ])
                 .unwrap(),
-            fcnt: 0,
+            fcnt_up: 0,
+            fcnt_down: 0,
         }
     }
 
@@ -426,12 +428,12 @@ impl SessionData {
         &self.devaddr
     }
 
-    pub fn fcnt(&self) -> u32 {
-        self.fcnt
+    pub fn fcnt_up(&self) -> u32 {
+        self.fcnt_up
     }
 
-    pub fn fcnt_up(&mut self) {
-        self.fcnt += 1;
+    pub fn fcnt_up_increment(&mut self) {
+        self.fcnt_up += 1;
     }
 }
 

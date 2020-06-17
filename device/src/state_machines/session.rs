@@ -81,7 +81,7 @@ impl<'a, R> Idle<R>
         phy.set_confirmed(data.confirmed)
             .set_f_port(data.fport)
             .set_dev_addr(self.session.devaddr().clone())
-            .set_fcnt(self.session.fcnt());
+            .set_fcnt(self.session.fcnt_up());
 
         let mut cmds = Vec::new();
         self.shared.mac.get_cmds(&mut cmds);
@@ -347,10 +347,13 @@ impl<'a, R> WaitingForRx<R>
                                 let packet = lorawan_parse(radio.get_received_packet()).unwrap();
                                 if let PhyPayload::Data(data_frame) = packet {
                                     if let DataPayload::Encrypted(encrypted_data) = data_frame {
-                                        let session = &self.session;
+                                        let session = &mut self.session;
                                         if session.devaddr() == &encrypted_data.fhdr().dev_addr() {
                                             let fcnt = encrypted_data.fhdr().fcnt() as u32;
-                                            if encrypted_data.validate_mic(&session.newskey(), fcnt) {
+                                            if encrypted_data.validate_mic(&session.newskey(), fcnt)
+                                            && fcnt > session.fcnt_down {
+
+                                                session.fcnt_down = fcnt;
                                                 let decrypted = encrypted_data
                                                     .decrypt(
                                                         Some(&session.newskey()),

@@ -129,7 +129,6 @@ where
         match event {
             Event::TxRequest(config, buf) => {
                 radio.configure_tx(config);
-
                 let len = buf.len();
                 radio.send(buf[..len].as_mut());
                 (State::Txing(self.into()), Ok(Response::Txing))
