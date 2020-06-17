@@ -26,7 +26,7 @@ pub struct Device<R: radio::PhyRxTx + Timings> {
 #[derive(Debug)]
 pub enum Response {
     Idle,
-    Rx,         // packet received
+    DataDown,         // packet received
     TxComplete, // packet sent
     TimeoutRequest(TimestampMs),
     SendingJoinRequest,
@@ -80,8 +80,8 @@ where
 }
 
 pub trait Timings {
-    fn get_rx_window_offset_ms(&mut self) -> isize;
-    fn get_rx_window_duration_ms(&mut self) -> usize;
+    fn get_rx_window_offset_ms(&mut self) -> i32;
+    fn get_rx_window_duration_ms(&mut self) -> u32;
 }
 
 impl<R: radio::PhyRxTx + Timings> Device<R> {

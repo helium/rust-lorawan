@@ -21,6 +21,11 @@ where
     WaitingForRx(WaitingForRx<R>),
 }
 
+enum RxWindow {
+    _1(u32),
+    _2(u32),
+}
+
 macro_rules! into_state {
     ($($from:tt),*) => {
     $(
@@ -140,11 +145,7 @@ where
                             // directly jump to waiting for RxWindow
                             // allows for synchronous sending
                             radio::Response::TxComplete(ms) => {
-                                let time = data_rx_window_timeout(&self.shared.region, ms);
-                                (
-                                    self.to_waiting_rxwindow(confirmed).into(),
-                                    Ok(Response::TimeoutRequest(time)),
-                                )
+                                data_rxwindow1_timeout(Session::Idle(self), confirmed, ms)
                             }
                             _ => {
                                 panic!("Unexpected radio response: {:?}", response);
@@ -169,10 +170,11 @@ where
         }
     }
 
-    fn to_waiting_rxwindow(self, confirmed: bool) -> WaitingForRxWindow<R> {
+    fn into_waiting_for_rxwindow(self, confirmed: bool, time: u32) -> WaitingForRxWindow<R> {
         WaitingForRxWindow {
             session: self.session,
             shared: self.shared,
+            rx_window: RxWindow::_1(time),
             confirmed,
         }
     }
@@ -213,11 +215,7 @@ where
                         match response {
                             // expect a complete transmit
                             radio::Response::TxComplete(ms) => {
-                                let time = data_rx_window_timeout(&self.shared.region, ms);
-                                (
-                                    WaitingForRxWindow::from(self).into(),
-                                    Ok(Response::TimeoutRequest(time)),
-                                )
+                                data_rxwindow1_timeout(Session::SendingData(self), self.confirmed,ms)
                             }
                             // tolerate idle
                             radio::Response::Idle => (self.into(), Ok(Response::Idle)),
@@ -236,20 +234,17 @@ where
             }
         }
     }
-}
 
-impl<R> From<SendingData<R>> for WaitingForRxWindow<R>
-where
-    R: radio::PhyRxTx + Timings,
-{
-    fn from(val: SendingData<R>) -> WaitingForRxWindow<R> {
+    fn into_waiting_for_rxwindow(self, confirmed: bool, time: u32) -> WaitingForRxWindow<R> {
         WaitingForRxWindow {
-            shared: val.shared,
-            session: val.session,
-            confirmed: val.confirmed,
+            session: self.session,
+            shared: self.shared,
+            rx_window: RxWindow::_1(time),
+            confirmed,
         }
     }
 }
+
 
 pub struct WaitingForRxWindow<R>
 where
@@ -258,12 +253,23 @@ where
     shared: Shared<R>,
     session: SessionData,
     confirmed: bool,
+    rx_window: RxWindow,
 }
 
 impl<'a, R> WaitingForRxWindow<R>
 where
     R: radio::PhyRxTx + Timings,
 {
+    fn from_sending_data(val: SendingData<R>, time: u32) -> WaitingForRxWindow<R> {
+        WaitingForRxWindow {
+            shared: val.shared,
+            session: val.session,
+            confirmed: val.confirmed,
+            rx_window: RxWindow::_1(time),
+        }
+    }
+
+
     pub fn handle_event(
         mut self,
         radio: &'a mut R,
@@ -284,11 +290,26 @@ where
                     .radio
                     .handle_event(radio, radio::Event::RxRequest(rx_config))
                 {
-                    // TODO: pass timeout
-                    Ok(_) => (
-                        WaitingForRx::from(self).into(),
-                        Ok(Response::WaitingForDataDown),
-                    ),
+                    Ok(_) => {
+
+                        let window_close: u32 = match self.rx_window {
+                            RxWindow::_1(time) => {
+                                let time_between_windows = self.shared.region.get_receive_delay2() -
+                                    self.shared.region.get_receive_delay1();
+                                if time_between_windows > radio.get_rx_window_duration_ms() {
+                                    time + radio.get_rx_window_duration_ms()
+                                } else {
+                                    time + time_between_windows
+                                }
+                            },
+                            RxWindow::_2(time) => time + radio.get_rx_window_duration_ms(),
+                        };
+                        (
+
+                            WaitingForRx::from(self).into(),
+                            Ok(Response::TimeoutRequest(window_close)),
+                        )
+                    }
                     Err(e) => (self.into(), Err(e.into())),
                 }
             }
@@ -309,6 +330,7 @@ where
             shared: val.shared,
             session: val.session,
             confirmed: val.confirmed,
+            rx_window: val.rx_window,
         }
     }
 }
@@ -320,6 +342,7 @@ where
     shared: Shared<R>,
     session: SessionData,
     confirmed: bool,
+    rx_window: RxWindow,
 }
 
 impl<'a, R> WaitingForRx<R>
@@ -362,20 +385,26 @@ where
                                                     &mac_cmd,
                                                 );
                                             }
-                                            return (self.into_idle().into(), Ok(Response::Rx));
+                                            return (self.into_idle().into(), Ok(Response::DataDown));
                                         }
                                     }
                                 }
                             }
-                            (self.into(), Ok(Response::WaitingForJoinAccept))
+                            (self.into(), Ok(Response::WaitingForDataDown))
                         }
-                        _ => (self.into(), Ok(Response::WaitingForJoinAccept)),
+                        _ => (self.into(), Ok(Response::WaitingForDataDown)),
                     },
                     Err(e) => (self.into(), Err(e.into())),
                 }
             }
+            Event::Timeout => {
+
+                //match self.window {
+                    (self.into(), Ok(Response::WaitingForJoinAccept))
+                //}
+            }
             // anything other than a RadioEvent is unexpected
-            Event::NewSession | Event::Timeout | Event::SendData(_) => {
+            Event::NewSession | Event::SendData(_) => {
                 panic!("Unexpected event while SendingJoin")
             }
         }
@@ -387,8 +416,50 @@ where
             session: self.session,
         }
     }
+
+    // fn timeout_transition(self) -> Device<R> {
+    //
+    //     let rx_window = self.rx_window;
+    //     match rx_window {
+    //
+    //         RxWindow::_1(t) => {
+    //             WaitingForRxWindow {
+    //                 shared: self.shared,
+    //                 session: self.session,
+    //                 confirmed: self.confirmed,
+    //                 rx_window: RxWindow::_2
+    //             }.into()
+    //         }
+    //         RxWindow::_2 => {
+    //             Idle {
+    //                 shared: self.shared,
+    //                 session: self.session,
+    //             }.into()
+    //         }
+    //     }
+    // }
 }
 
-fn data_rx_window_timeout(region: &RegionalConfiguration, timestamp_ms: TimestampMs) -> u32 {
-    region.get_receive_delay1() + timestamp_ms
+fn data_rxwindow1_timeout<R: radio::PhyRxTx + Timings>(state: Session<R>, confirmed: bool, timestamp_ms: TimestampMs) -> (Device<R>, Result<Response, super::super::Error>) {
+
+    let (new_state, first_window) = match state {
+        Session::Idle(state) => {
+            let first_window = state.shared.region.get_receive_delay1() + timestamp_ms;
+            (state.into_waiting_for_rxwindow(confirmed,first_window), first_window)
+        },
+        Session::SendingData(state) => {
+            let first_window = state.shared.region.get_receive_delay1() + timestamp_ms;
+            (state.into_waiting_for_rxwindow(confirmed,first_window), first_window)
+
+        },
+        _ => panic!("Invalid state to transition to WaitingForRxWindow")
+    };
+
+
+
+
+    (
+        new_state.into(),
+        Ok(Response::TimeoutRequest(first_window)),
+    )
 }
