@@ -112,13 +112,15 @@ impl<R: radio::PhyRxTx + Timings> Device<R> {
         data: &[u8],
         fport: u8,
         confirmed: bool,
-    )  -> (Self, Result<Response, Error>) {
-
-        self.handle_event(radio,Event::SendData(SendData {
-            data,
-            fport,
-            confirmed,
-        }))
+    ) -> (Self, Result<Response, Error>) {
+        self.handle_event(
+            radio,
+            Event::SendData(SendData {
+                data,
+                fport,
+                confirmed,
+            }),
+        )
     }
 
     pub fn handle_event(

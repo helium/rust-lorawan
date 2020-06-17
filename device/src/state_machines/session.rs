@@ -1,16 +1,15 @@
+use super::super::no_session::SessionData;
 use super::super::State as SuperState;
 use super::super::*;
-use super::super::no_session::SessionData;
+use as_slice::AsSlice;
 use core::marker::PhantomData;
 use lorawan_encoding::{
     self,
-    keys::AES128,
     creator::DataPayloadCreator,
+    keys::AES128,
     maccommands::SerializableMacCommand,
     parser::{parse as lorawan_parse, *},
 };
-use as_slice::AsSlice;
-
 
 pub enum Session<R>
 where
@@ -21,7 +20,6 @@ where
     WaitingForRxWindow(WaitingForRxWindow<R>),
     WaitingForRx(WaitingForRx<R>),
 }
-
 
 macro_rules! into_state {
     ($($from:tt),*) => {
@@ -37,24 +35,18 @@ macro_rules! into_state {
     )*};
 }
 
-into_state![
-    Idle,
-    SendingData,
-    WaitingForRxWindow,
-    WaitingForRx
-];
+into_state![Idle, SendingData, WaitingForRxWindow, WaitingForRx];
 
 pub enum Error {}
 
 impl<R> Session<R>
-    where
-        R: radio::PhyRxTx + Timings
+where
+    R: radio::PhyRxTx + Timings,
 {
-    pub fn new(shared: Shared<R>, session: SessionData) -> Device<R>{
-        Device{ state: SuperState::Session(Session::Idle( Idle {
-            shared,
-            session,
-        }))}
+    pub fn new(shared: Shared<R>, session: SessionData) -> Device<R> {
+        Device {
+            state: SuperState::Session(Session::Idle(Idle { shared, session })),
+        }
     }
     pub fn handle_event(
         mut self,
@@ -71,12 +63,10 @@ impl<R> Session<R>
 }
 
 impl<'a, R> Idle<R>
-    where
-        R: radio::PhyRxTx + Timings,
+where
+    R: radio::PhyRxTx + Timings,
 {
-
     fn prepare_buffer(&mut self, data: &SendData) {
-
         let mut phy = DataPayloadCreator::new();
         phy.set_confirmed(data.confirmed)
             .set_f_port(data.fport)
@@ -94,7 +84,7 @@ impl<'a, R> Idle<R>
             }
         }
 
-        self.session.fcnt_up();
+        self.session.fcnt_up_increment();
 
         match phy.build(
             &data.data,
@@ -105,7 +95,7 @@ impl<'a, R> Idle<R>
             Ok(packet) => {
                 self.shared.buffer.clear();
                 self.shared.buffer.extend(packet);
-            },
+            }
             Err(_) => panic!("Error assembling packet!"),
         }
     }
@@ -143,9 +133,10 @@ impl<'a, R> Idle<R>
                         match response {
                             // intermediate state where we wait for Join to complete sending
                             // allows for asynchronous sending
-                            radio::Response::Txing => {
-                                (self.to_sending_data(confirmed).into(), Ok(Response::SendingDataUp))
-                            }
+                            radio::Response::Txing => (
+                                self.to_sending_data(confirmed).into(),
+                                Ok(Response::SendingDataUp),
+                            ),
                             // directly jump to waiting for RxWindow
                             // allows for synchronous sending
                             radio::Response::TxComplete(ms) => {
@@ -163,9 +154,7 @@ impl<'a, R> Idle<R>
                     Err(e) => (self.into(), Err(e.into())),
                 }
             }
-            Event::NewSession | Event::Timeout => {
-                (self.into(), Ok(Response::Idle))
-            }
+            Event::NewSession | Event::Timeout => (self.into(), Ok(Response::Idle)),
             Event::RadioEvent(radio_event) => {
                 panic!("Unexpected radio event while Session::Idle");
             }
@@ -180,7 +169,7 @@ impl<'a, R> Idle<R>
         }
     }
 
-    fn to_waiting_rxwindow(self, confirmed: bool)  -> WaitingForRxWindow<R> {
+    fn to_waiting_rxwindow(self, confirmed: bool) -> WaitingForRxWindow<R> {
         WaitingForRxWindow {
             session: self.session,
             shared: self.shared,
@@ -207,8 +196,8 @@ where
 }
 
 impl<R> SendingData<R>
-    where
-        R: radio::PhyRxTx + Timings,
+where
+    R: radio::PhyRxTx + Timings,
 {
     pub fn handle_event<'a>(
         mut self,
@@ -225,7 +214,10 @@ impl<R> SendingData<R>
                             // expect a complete transmit
                             radio::Response::TxComplete(ms) => {
                                 let time = data_rx_window_timeout(&self.shared.region, ms);
-                                (WaitingForRxWindow::from(self).into(), Ok(Response::TimeoutRequest(time)))
+                                (
+                                    WaitingForRxWindow::from(self).into(),
+                                    Ok(Response::TimeoutRequest(time)),
+                                )
                             }
                             // tolerate idle
                             radio::Response::Idle => (self.into(), Ok(Response::Idle)),
@@ -235,20 +227,20 @@ impl<R> SendingData<R>
                             }
                         }
                     }
-                    Err(e) => {
-                        (self.into(), Err(e.into()))
-                    },
+                    Err(e) => (self.into(), Err(e.into())),
                 }
             }
             // anything other than a RadioEvent is unexpected
-            Event::NewSession | Event::Timeout | Event::SendData(_) => panic!("Unexpected event while SendingJoin"),
+            Event::NewSession | Event::Timeout | Event::SendData(_) => {
+                panic!("Unexpected event while SendingJoin")
+            }
         }
     }
 }
 
 impl<R> From<SendingData<R>> for WaitingForRxWindow<R>
-    where
-        R: radio::PhyRxTx + Timings,
+where
+    R: radio::PhyRxTx + Timings,
 {
     fn from(val: SendingData<R>) -> WaitingForRxWindow<R> {
         WaitingForRxWindow {
@@ -260,8 +252,8 @@ impl<R> From<SendingData<R>> for WaitingForRxWindow<R>
 }
 
 pub struct WaitingForRxWindow<R>
-    where
-        R: radio::PhyRxTx + Timings,
+where
+    R: radio::PhyRxTx + Timings,
 {
     shared: Shared<R>,
     session: SessionData,
@@ -269,8 +261,8 @@ pub struct WaitingForRxWindow<R>
 }
 
 impl<'a, R> WaitingForRxWindow<R>
-    where
-        R: radio::PhyRxTx + Timings,
+where
+    R: radio::PhyRxTx + Timings,
 {
     pub fn handle_event(
         mut self,
@@ -293,7 +285,10 @@ impl<'a, R> WaitingForRxWindow<R>
                     .handle_event(radio, radio::Event::RxRequest(rx_config))
                 {
                     // TODO: pass timeout
-                    Ok(_) => (WaitingForRx::from(self).into(), Ok(Response::WaitingForDataDown)),
+                    Ok(_) => (
+                        WaitingForRx::from(self).into(),
+                        Ok(Response::WaitingForDataDown),
+                    ),
                     Err(e) => (self.into(), Err(e.into())),
                 }
             }
@@ -306,8 +301,8 @@ impl<'a, R> WaitingForRxWindow<R>
 }
 
 impl<R> From<WaitingForRxWindow<R>> for WaitingForRx<R>
-    where
-        R: radio::PhyRxTx + Timings,
+where
+    R: radio::PhyRxTx + Timings,
 {
     fn from(val: WaitingForRxWindow<R>) -> WaitingForRx<R> {
         WaitingForRx {
@@ -328,8 +323,8 @@ where
 }
 
 impl<'a, R> WaitingForRx<R>
-    where
-        R: radio::PhyRxTx + Timings,
+where
+    R: radio::PhyRxTx + Timings,
 {
     pub fn handle_event(
         mut self,
@@ -341,48 +336,48 @@ impl<'a, R> WaitingForRx<R>
             Event::RadioEvent(radio_event) => {
                 // send the transmit request to the radio
                 match self.shared.radio.handle_event(radio, radio_event) {
-                    Ok(response) => {
-                        match response {
-                            radio::Response::Rx(quality) => {
-                                let packet = lorawan_parse(radio.get_received_packet()).unwrap();
-                                if let PhyPayload::Data(data_frame) = packet {
-                                    if let DataPayload::Encrypted(encrypted_data) = data_frame {
-                                        let session = &mut self.session;
-                                        if session.devaddr() == &encrypted_data.fhdr().dev_addr() {
-                                            let fcnt = encrypted_data.fhdr().fcnt() as u32;
-                                            if encrypted_data.validate_mic(&session.newskey(), fcnt)
-                                            && fcnt > session.fcnt_down {
+                    Ok(response) => match response {
+                        radio::Response::Rx(quality) => {
+                            let packet = lorawan_parse(radio.get_received_packet()).unwrap();
+                            if let PhyPayload::Data(data_frame) = packet {
+                                if let DataPayload::Encrypted(encrypted_data) = data_frame {
+                                    let session = &mut self.session;
+                                    if session.devaddr() == &encrypted_data.fhdr().dev_addr() {
+                                        let fcnt = encrypted_data.fhdr().fcnt() as u32;
+                                        if encrypted_data.validate_mic(&session.newskey(), fcnt)
+                                            && (fcnt > session.fcnt_down || fcnt == 0)
+                                        {
+                                            session.fcnt_down = fcnt;
+                                            let decrypted = encrypted_data
+                                                .decrypt(
+                                                    Some(&session.newskey()),
+                                                    Some(&session.appskey()),
+                                                    fcnt,
+                                                )
+                                                .unwrap();
 
-                                                session.fcnt_down = fcnt;
-                                                let decrypted = encrypted_data
-                                                    .decrypt(
-                                                        Some(&session.newskey()),
-                                                        Some(&session.appskey()),
-                                                        fcnt,
-                                                    )
-                                                    .unwrap();
-
-                                                for mac_cmd in decrypted.fhdr().fopts() {
-                                                    self.shared.mac.handle_downlink_mac(&mut self.shared.region, &mac_cmd);
-                                                }
-                                                return (self.into_idle().into(), Ok(Response::Rx));
+                                            for mac_cmd in decrypted.fhdr().fopts() {
+                                                self.shared.mac.handle_downlink_mac(
+                                                    &mut self.shared.region,
+                                                    &mac_cmd,
+                                                );
                                             }
+                                            return (self.into_idle().into(), Ok(Response::Rx));
                                         }
                                     }
                                 }
-                                (self.into(), Ok(Response::WaitingForJoinAccept))
                             }
-                            _ => (self.into(), Ok(Response::WaitingForJoinAccept)),
-
+                            (self.into(), Ok(Response::WaitingForJoinAccept))
                         }
-                    }
-                    Err(e) => {
-                        (self.into(), Err(e.into()))
+                        _ => (self.into(), Ok(Response::WaitingForJoinAccept)),
                     },
+                    Err(e) => (self.into(), Err(e.into())),
                 }
             }
             // anything other than a RadioEvent is unexpected
-            Event::NewSession | Event::Timeout | Event::SendData(_) => panic!("Unexpected event while SendingJoin"),
+            Event::NewSession | Event::Timeout | Event::SendData(_) => {
+                panic!("Unexpected event while SendingJoin")
+            }
         }
     }
 

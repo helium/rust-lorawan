@@ -1,6 +1,6 @@
+use super::super::session::Session;
 use super::super::State as SuperState;
 use super::super::*;
-use super::super::session::Session;
 use super::Shared;
 use core::marker::PhantomData;
 use lorawan_encoding::{
@@ -10,7 +10,6 @@ use lorawan_encoding::{
     parser::DevAddr,
     parser::{parse as lorawan_parse, *},
 };
-
 
 pub enum NoSession<R>
 where
@@ -111,9 +110,10 @@ where
                         match response {
                             // intermediate state where we wait for Join to complete sending
                             // allows for asynchronous sending
-                            radio::Response::Txing => {
-                                (self.to_sending_join(devnonce).into(), Ok(Response::SendingJoinRequest))
-                            }
+                            radio::Response::Txing => (
+                                self.to_sending_join(devnonce).into(),
+                                Ok(Response::SendingJoinRequest),
+                            ),
                             // directly jump to waiting for RxWindow
                             // allows for synchronous sending
                             radio::Response::TxComplete(ms) => {
@@ -160,7 +160,6 @@ where
         let devnonce_copy = DevNonce::new(devnonce).unwrap();
 
         self.shared.buffer.extend(vec);
-
 
         // we'll use the rest for frequency and subband selection
         random >>= 16;
@@ -223,7 +222,10 @@ where
                             // expect a complete transmit
                             radio::Response::TxComplete(ms) => {
                                 let time = join_rx_window_timeout(&self.shared.region, ms);
-                                (WaitingForRxWindow::from(self).into(), Ok(Response::TimeoutRequest(time)))
+                                (
+                                    WaitingForRxWindow::from(self).into(),
+                                    Ok(Response::TimeoutRequest(time)),
+                                )
                             }
                             // tolerate idle
                             radio::Response::Idle => (self.into(), Ok(Response::Idle)),
@@ -233,13 +235,13 @@ where
                             }
                         }
                     }
-                    Err(e) => {
-                        (self.into(), Err(e.into()))
-                    },
+                    Err(e) => (self.into(), Err(e.into())),
                 }
             }
             // anything other than a RadioEvent is unexpected
-            Event::NewSession | Event::Timeout | Event::SendData(_) => panic!("Unexpected event while SendingJoin"),
+            Event::NewSession | Event::Timeout | Event::SendData(_) => {
+                panic!("Unexpected event while SendingJoin")
+            }
         }
     }
 }
@@ -291,7 +293,10 @@ where
                     .handle_event(radio, radio::Event::RxRequest(rx_config))
                 {
                     // TODO: pass timeout
-                    Ok(_) => (WaitingForJoinResponse::from(self).into(), Ok(Response::WaitingForJoinAccept)),
+                    Ok(_) => (
+                        WaitingForJoinResponse::from(self).into(),
+                        Ok(Response::WaitingForJoinAccept),
+                    ),
                     Err(e) => (self.into(), Err(e.into())),
                 }
             }
@@ -339,37 +344,39 @@ where
             Event::RadioEvent(radio_event) => {
                 // send the transmit request to the radio
                 match self.shared.radio.handle_event(radio, radio_event) {
-                    Ok(response) => {
-                        match response {
-                            radio::Response::Rx(quality) => {
-                                let packet = lorawan_parse(radio.get_received_packet()).unwrap();
+                    Ok(response) => match response {
+                        radio::Response::Rx(quality) => {
+                            let packet = lorawan_parse(radio.get_received_packet()).unwrap();
 
-                                if let PhyPayload::JoinAccept(join_accept) = packet {
-                                    if let JoinAcceptPayload::Encrypted(encrypted) = join_accept {
-                                        let credentials = &self.shared.credentials;
+                            if let PhyPayload::JoinAccept(join_accept) = packet {
+                                if let JoinAcceptPayload::Encrypted(encrypted) = join_accept {
+                                    let credentials = &self.shared.credentials;
 
-                                        let decrypt = encrypted.decrypt(credentials.appkey());
-                                        if decrypt.validate_mic(credentials.appkey()) {
-                                            let session = SessionData::derive_new(&decrypt, &self.devnonce, credentials);
-                                            return (
-                                                Session::new(self.shared, session),   Ok(Response::NewSession)
-                                            );
-                                        }
+                                    let decrypt = encrypted.decrypt(credentials.appkey());
+                                    if decrypt.validate_mic(credentials.appkey()) {
+                                        let session = SessionData::derive_new(
+                                            &decrypt,
+                                            &self.devnonce,
+                                            credentials,
+                                        );
+                                        return (
+                                            Session::new(self.shared, session),
+                                            Ok(Response::NewSession),
+                                        );
                                     }
                                 }
-                                (self.into(), Ok(Response::WaitingForJoinAccept))
                             }
-                            _ => (self.into(), Ok(Response::WaitingForJoinAccept)),
-
+                            (self.into(), Ok(Response::WaitingForJoinAccept))
                         }
-                    }
-                    Err(e) => {
-                        (self.into(), Err(e.into()))
+                        _ => (self.into(), Ok(Response::WaitingForJoinAccept)),
                     },
+                    Err(e) => (self.into(), Err(e.into())),
                 }
             }
             // anything other than a RadioEvent is unexpected
-            Event::NewSession | Event::Timeout | Event::SendData(_) => panic!("Unexpected event while SendingJoin"),
+            Event::NewSession | Event::Timeout | Event::SendData(_) => {
+                panic!("Unexpected event while SendingJoin")
+            }
         }
     }
 }
@@ -386,9 +393,7 @@ where
     }
 }
 
-
-pub struct SessionData
-{
+pub struct SessionData {
     newskey: AES128,
     appskey: AES128,
     devaddr: DevAddr<[u8; 4]>,
@@ -396,21 +401,22 @@ pub struct SessionData
     pub fcnt_down: u32,
 }
 
-
 impl SessionData {
-    pub fn derive_new<T: core::convert::AsRef<[u8]>,F: lorawan_encoding::keys::CryptoFactory>(decrypt: &DecryptedJoinAcceptPayload<T,F>, devnonce: &DevNonce, credentials: &Credentials) -> SessionData{
+    pub fn derive_new<T: core::convert::AsRef<[u8]>, F: lorawan_encoding::keys::CryptoFactory>(
+        decrypt: &DecryptedJoinAcceptPayload<T, F>,
+        devnonce: &DevNonce,
+        credentials: &Credentials,
+    ) -> SessionData {
         SessionData {
-            newskey: decrypt
-                .derive_newskey(devnonce, credentials.appkey()),
-            appskey: decrypt
-                .derive_appskey(devnonce, credentials.appkey()),
+            newskey: decrypt.derive_newskey(devnonce, credentials.appkey()),
+            appskey: decrypt.derive_appskey(devnonce, credentials.appkey()),
             devaddr: DevAddr::new([
                 decrypt.dev_addr().as_ref()[0],
                 decrypt.dev_addr().as_ref()[1],
                 decrypt.dev_addr().as_ref()[2],
                 decrypt.dev_addr().as_ref()[3],
             ])
-                .unwrap(),
+            .unwrap(),
             fcnt_up: 0,
             fcnt_down: 0,
         }

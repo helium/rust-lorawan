@@ -138,9 +138,7 @@ where
                 radio.set_rx();
                 (State::Rxing(self.into()), Ok(Response::Rxing))
             }
-            Event::PhyEvent(phyevent) => {
-                (State::Idle(self), Ok(Response::Idle))
-            },
+            Event::PhyEvent(phyevent) => (State::Idle(self), Ok(Response::Idle)),
             _ => {
                 panic!("Timout when idle?");
             }

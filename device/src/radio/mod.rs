@@ -30,8 +30,12 @@ pub trait PhyRxTx {
     // we require mutability so we may decrypt in place
     fn get_received_packet(&mut self) -> &mut Vec<u8, U256>;
 
-    fn cancel_tx(&mut self) -> Result<(), PhyError> {Ok(())}
-    fn cancel_rx(&mut self) -> Result<(), PhyError> {Ok(())}
+    fn cancel_tx(&mut self) -> Result<(), PhyError> {
+        Ok(())
+    }
+    fn cancel_rx(&mut self) -> Result<(), PhyError> {
+        Ok(())
+    }
     fn configure_tx(&mut self, config: TxConfig);
     fn configure_rx(&mut self, config: RfConfig);
     fn set_rx(&mut self);
