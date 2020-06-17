@@ -227,7 +227,7 @@ where
                             }
                             // tolerate idle
                             radio::Response::Idle => (self.into(), Ok(Response::Idle)),
-                            // anything other than TxComplete is unexpected
+                            // anything other than TxComplete | Idle is unexpected
                             _ => {
                                 panic!("Unexpected radio response: {:?}", response);
                             }
@@ -397,7 +397,7 @@ pub struct SessionData
 
 
 impl SessionData {
-    pub fn derive_new<T: std::convert::AsRef<[u8]>,F: lorawan_encoding::keys::CryptoFactory>(decrypt: &DecryptedJoinAcceptPayload<T,F>, devnonce: &DevNonce, credentials: &Credentials) -> SessionData{
+    pub fn derive_new<T: core::convert::AsRef<[u8]>,F: lorawan_encoding::keys::CryptoFactory>(decrypt: &DecryptedJoinAcceptPayload<T,F>, devnonce: &DevNonce, credentials: &Credentials) -> SessionData{
         SessionData {
             newskey: decrypt
                 .derive_newskey(devnonce, credentials.appkey()),
@@ -429,7 +429,6 @@ impl SessionData {
     pub fn fcnt(&self) -> u32 {
         self.fcnt
     }
-
 
     pub fn fcnt_up(&mut self) {
         self.fcnt += 1;

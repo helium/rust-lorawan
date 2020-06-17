@@ -1,4 +1,4 @@
-//#![no_std]
+#![no_std]
 
 use heapless::consts::*;
 use heapless::Vec;
@@ -34,6 +34,7 @@ pub enum Response {
     Rxing,
     NewSession,
     SendingDataUp,
+    WaitingForDataDown,
 }
 
 pub enum Error {

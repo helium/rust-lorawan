@@ -94,6 +94,8 @@ impl<'a, R> Idle<R>
             }
         }
 
+        self.session.fcnt_up();
+
         match phy.build(
             &data.data,
             dyn_cmds.as_slice(),
@@ -114,7 +116,6 @@ impl<'a, R> Idle<R>
     ) -> (Device<R>, Result<Response, super::super::Error>) {
         match event {
             Event::SendData(send_data) => {
-
                 // encodes the packet and places it in send buffer
                 self.prepare_buffer(&send_data);
 
@@ -205,25 +206,55 @@ where
     confirmed: bool,
 }
 
-impl<'a, R> SendingData<R>
+impl<R> SendingData<R>
     where
         R: radio::PhyRxTx + Timings,
 {
-    pub fn handle_event(
+    pub fn handle_event<'a>(
         mut self,
         radio: &'a mut R,
         event: Event<R>,
     ) -> (Device<R>, Result<Response, super::super::Error>) {
         match event {
-            Event::SendData(_) => {
-                (self.into(), Ok(Response::Idle))
-            }
-            Event::NewSession | Event::Timeout => {
-                (self.into(), Ok(Response::Idle))
-            }
+            // we are waiting for the async tx to complete
             Event::RadioEvent(radio_event) => {
-                panic!("Unexpected radio event while Session::Idle");
+                // send the transmit request to the radio
+                match self.shared.radio.handle_event(radio, radio_event) {
+                    Ok(response) => {
+                        match response {
+                            // expect a complete transmit
+                            radio::Response::TxComplete(ms) => {
+                                let time = data_rx_window_timeout(&self.shared.region, ms);
+                                (WaitingForRxWindow::from(self).into(), Ok(Response::TimeoutRequest(time)))
+                            }
+                            // tolerate idle
+                            radio::Response::Idle => (self.into(), Ok(Response::Idle)),
+                            // anything other than TxComplete | Idle is unexpected
+                            _ => {
+                                panic!("Unexpected radio response: {:?}", response);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        (self.into(), Err(e.into()))
+                    },
+                }
             }
+            // anything other than a RadioEvent is unexpected
+            Event::NewSession | Event::Timeout | Event::SendData(_) => panic!("Unexpected event while SendingJoin"),
+        }
+    }
+}
+
+impl<R> From<SendingData<R>> for WaitingForRxWindow<R>
+    where
+        R: radio::PhyRxTx + Timings,
+{
+    fn from(val: SendingData<R>) -> WaitingForRxWindow<R> {
+        WaitingForRxWindow {
+            shared: val.shared,
+            session: val.session,
+            confirmed: val.confirmed,
         }
     }
 }
@@ -247,19 +278,45 @@ impl<'a, R> WaitingForRxWindow<R>
         event: Event<R>,
     ) -> (Device<R>, Result<Response, super::super::Error>) {
         match event {
-            Event::SendData(_) => {
-                (self.into(), Ok(Response::Idle))
+            // we are waiting for a Timeout
+            Event::Timeout => {
+                let rx_config = radio::RfConfig {
+                    frequency: self.shared.region.get_rxwindow1_frequency(),
+                    bandwidth: radio::Bandwidth::_500KHZ,
+                    spreading_factor: radio::SpreadingFactor::_10,
+                    coding_rate: radio::CodingRate::_4_5,
+                };
+                // configure the radio for the RX
+                match self
+                    .shared
+                    .radio
+                    .handle_event(radio, radio::Event::RxRequest(rx_config))
+                {
+                    // TODO: pass timeout
+                    Ok(_) => (WaitingForRx::from(self).into(), Ok(Response::WaitingForDataDown)),
+                    Err(e) => (self.into(), Err(e.into())),
+                }
             }
-            Event::NewSession | Event::Timeout => {
-                (self.into(), Ok(Response::Idle))
-            }
-            Event::RadioEvent(radio_event) => {
-                panic!("Unexpected radio event while Session::Idle");
+            // anything other than a Timeout is unexpected
+            Event::NewSession | Event::RadioEvent(_) | Event::SendData(_) => {
+                panic!("Unexpected event while WaitingForRxWindow")
             }
         }
     }
 }
 
+impl<R> From<WaitingForRxWindow<R>> for WaitingForRx<R>
+    where
+        R: radio::PhyRxTx + Timings,
+{
+    fn from(val: WaitingForRxWindow<R>) -> WaitingForRx<R> {
+        WaitingForRx {
+            shared: val.shared,
+            session: val.session,
+            confirmed: val.confirmed,
+        }
+    }
+}
 
 pub struct WaitingForRx<R>
 where
@@ -267,7 +324,7 @@ where
 {
     shared: Shared<R>,
     session: SessionData,
-    radio: PhantomData<R>,
+    confirmed: bool,
 }
 
 impl<'a, R> WaitingForRx<R>
@@ -280,15 +337,56 @@ impl<'a, R> WaitingForRx<R>
         event: Event<R>,
     ) -> (Device<R>, Result<Response, super::super::Error>) {
         match event {
-            Event::SendData(_) => {
-                (self.into(), Ok(Response::Idle))
-            }
-            Event::NewSession | Event::Timeout => {
-                (self.into(), Ok(Response::Idle))
-            }
+            // we are waiting for the async tx to complete
             Event::RadioEvent(radio_event) => {
-                panic!("Unexpected radio event while Session::Idle");
+                // send the transmit request to the radio
+                match self.shared.radio.handle_event(radio, radio_event) {
+                    Ok(response) => {
+                        match response {
+                            radio::Response::Rx(quality) => {
+                                let packet = lorawan_parse(radio.get_received_packet()).unwrap();
+                                if let PhyPayload::Data(data_frame) = packet {
+                                    if let DataPayload::Encrypted(encrypted_data) = data_frame {
+                                        let session = &self.session;
+                                        if session.devaddr() == &encrypted_data.fhdr().dev_addr() {
+                                            let fcnt = encrypted_data.fhdr().fcnt() as u32;
+                                            if encrypted_data.validate_mic(&session.newskey(), fcnt) {
+                                                let decrypted = encrypted_data
+                                                    .decrypt(
+                                                        Some(&session.newskey()),
+                                                        Some(&session.appskey()),
+                                                        fcnt,
+                                                    )
+                                                    .unwrap();
+
+                                                for mac_cmd in decrypted.fhdr().fopts() {
+                                                    self.shared.mac.handle_downlink_mac(&mut self.shared.region, &mac_cmd);
+                                                }
+                                                return (self.into_idle().into(), Ok(Response::Rx));
+                                            }
+                                        }
+                                    }
+                                }
+                                (self.into(), Ok(Response::WaitingForJoinAccept))
+                            }
+                            _ => (self.into(), Ok(Response::WaitingForJoinAccept)),
+
+                        }
+                    }
+                    Err(e) => {
+                        (self.into(), Err(e.into()))
+                    },
+                }
             }
+            // anything other than a RadioEvent is unexpected
+            Event::NewSession | Event::Timeout | Event::SendData(_) => panic!("Unexpected event while SendingJoin"),
+        }
+    }
+
+    fn into_idle(self) -> Idle<R> {
+        Idle {
+            shared: self.shared,
+            session: self.session,
         }
     }
 }
