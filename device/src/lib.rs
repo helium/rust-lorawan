@@ -1,4 +1,4 @@
-#![no_std]
+//#![no_std]
 
 use heapless::consts::*;
 use heapless::Vec;
@@ -35,6 +35,8 @@ pub enum Response {
     NewSession,
     SendingDataUp,
     WaitingForDataDown,
+    NoAck,
+    ReadyToSend
 }
 
 pub enum Error {

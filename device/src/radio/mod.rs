@@ -14,6 +14,7 @@ pub enum PhyResponse {
     RxError,
 }
 
+#[derive(Debug)]
 pub enum PhyError {
     TxError,
     RxError,

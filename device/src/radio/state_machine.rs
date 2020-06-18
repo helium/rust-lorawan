@@ -20,6 +20,7 @@ pub enum Response {
     Idle,
 }
 
+#[derive(Debug)]
 pub enum Error {
     BadState,
     PhyError(PhyError),
@@ -40,6 +41,7 @@ where
 {
     TxRequest(TxConfig, &'a mut Vec<u8, U256>),
     RxRequest(RfConfig),
+    CancelRx,
     PhyEvent(R::PhyEvent),
 }
 
@@ -139,9 +141,8 @@ where
                 (State::Rxing(self.into()), Ok(Response::Rxing))
             }
             Event::PhyEvent(phyevent) => (State::Idle(self), Ok(Response::Idle)),
-            _ => {
-                panic!("Timout when idle?");
-            }
+            Event::CancelRx => (State::Idle(self), Err(Error::BadState)),
+
         }
     }
 }
@@ -169,6 +170,7 @@ where
             }
             Event::TxRequest(_, _) => (State::Txing(self), Err(Error::BadState)),
             Event::RxRequest(_) => (State::Txing(self), Err(Error::BadState)),
+            Event::CancelRx => (State::Txing(self), Err(Error::BadState)),
         }
     }
 }
@@ -190,6 +192,9 @@ where
                 } else {
                     (State::Rxing(self), Ok(Response::Rxing))
                 }
+            }
+            Event::CancelRx => {
+                (State::Idle(self.into()), Ok(Response::Idle))
             }
             Event::TxRequest(_, _) => (State::Rxing(self), Err(Error::BadState)),
             Event::RxRequest(_) => (State::Rxing(self), Err(Error::BadState)),

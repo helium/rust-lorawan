@@ -125,7 +125,7 @@ where
                                 )
                             }
                             _ => {
-                                panic!("Unexpected radio response: {:?}", response);
+                                panic!("Idle: Unexpected radio response: {:?}", response);
                             }
                         }
                     }
@@ -231,7 +231,7 @@ where
                             radio::Response::Idle => (self.into(), Ok(Response::Idle)),
                             // anything other than TxComplete | Idle is unexpected
                             _ => {
-                                panic!("Unexpected radio response: {:?}", response);
+                                panic!("SendingJoin: Unexpected radio response: {:?}", response);
                             }
                         }
                     }
