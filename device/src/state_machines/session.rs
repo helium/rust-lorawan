@@ -158,7 +158,11 @@ where
                         }
                     }
             }
-            Event::NewSession | Event::Timeout => (self.into(), Ok(Response::Idle)),
+            // tolerate unexpected timeout
+            Event::Timeout => (self.into(), Ok(Response::Idle)),
+            Event::NewSession => {
+                panic!("Unhandled NewSession request during active session");
+            },
             Event::RadioEvent(radio_event) => {
                 panic!("Unexpected radio event while Session::Idle");
             }
@@ -221,9 +225,7 @@ where
                                 let confirmed = self.confirmed;
                                 data_rxwindow1_timeout(Session::SendingData(self), confirmed,ms)
                             }
-                            // tolerate idle
-                            radio::Response::Idle => (self.into(), Ok(Response::Idle)),
-                            // anything other than TxComplete | Idle is unexpected
+                            // anything other than TxComplete is unexpected
                             _ => {
                                 panic!("SendingData: Unexpected radio response: {:?}", response);
                             }
@@ -231,10 +233,11 @@ where
                     }
                     Err(e) => {
                         panic!("Radio Error when SendingData: {:?}", e)
-                        //(self.into(), Err(e.into()))
                     },
                 }
             }
+            // tolerate unexpected timeout
+            Event::Timeout => (self.into(), Ok(Response::Idle)),
             // anything other than a RadioEvent is unexpected
             Event::NewSession | Event::Timeout | Event::SendData(_) => {
                 panic!("Unexpected event while SendingJoin")
@@ -403,13 +406,15 @@ where
 
                 // send the transmit request to the radio
                 if let Err(e) = self.shared.radio.handle_event(radio, radio::Event::CancelRx) {
-                    panic!("Error cancelling RX")
+                    panic!("Error cancelling Rx: {:?}", e)
                 }
+
                 match self.rx_window {
                     RxWindow::_1(t1) => {
                         let time_between_windows = self.shared.region.get_receive_delay2() -
                             self.shared.region.get_receive_delay1();
                         let t2 = t1+ time_between_windows;
+                        // TODO: jump to RxWindow2 if t2 == now
                         (WaitingForRxWindow {
                             shared: self.shared,
                             session: self.session,
@@ -417,6 +422,7 @@ where
                             rx_window: RxWindow::_2(t2)
                         }.into(), Ok(Response::TimeoutRequest(t2)))
                     }
+                    // Timeout during second RxWindow leads to giving up
                     RxWindow::_2(_) => {
                         (Idle {
                             shared: self.shared,
@@ -427,11 +433,10 @@ where
                         })
                     }
                 }
-
             }
             // anything other than a RadioEvent is unexpected
             Event::NewSession | Event::SendData(_) => {
-                panic!("Unexpected event while SendingJoin")
+                panic!("Unexpected event while WaitingForRx")
             }
         }
     }

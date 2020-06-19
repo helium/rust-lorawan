@@ -22,7 +22,12 @@ pub enum Response {
 
 #[derive(Debug)]
 pub enum Error {
-    BadState,
+    TxRequestDuringTx,
+    TxRequestDuringRx,
+    RxRequestDuringTx,
+    RxRequestDuringRx,
+    CancelRxWhileIdle,
+    CancelRxDuringTx,
     PhyError(PhyError),
 }
 
@@ -141,7 +146,7 @@ where
                 (State::Rxing(self.into()), Ok(Response::Rxing))
             }
             Event::PhyEvent(phyevent) => (State::Idle(self), Ok(Response::Idle)),
-            Event::CancelRx => (State::Idle(self), Err(Error::BadState)),
+            Event::CancelRx => (State::Idle(self), Err(Error::CancelRxWhileIdle)),
 
         }
     }
@@ -168,9 +173,11 @@ where
                     (State::Txing(self), Ok(Response::Txing))
                 }
             }
-            Event::TxRequest(_, _) => (State::Txing(self), Err(Error::BadState)),
-            Event::RxRequest(_) => (State::Txing(self), Err(Error::BadState)),
-            Event::CancelRx => (State::Txing(self), Err(Error::BadState)),
+            Event::TxRequest(_, _) => (State::Txing(self), Err(Error::TxRequestDuringTx)),
+            Event::RxRequest(_) => (State::Txing(self), Err(Error::RxRequestDuringTx)),
+            Event::CancelRx => {
+                (State::Txing(self), Err(Error::CancelRxDuringTx))
+            },
         }
     }
 }
@@ -196,8 +203,8 @@ where
             Event::CancelRx => {
                 (State::Idle(self.into()), Ok(Response::Idle))
             }
-            Event::TxRequest(_, _) => (State::Rxing(self), Err(Error::BadState)),
-            Event::RxRequest(_) => (State::Rxing(self), Err(Error::BadState)),
+            Event::TxRequest(_, _) => (State::Rxing(self), Err(Error::TxRequestDuringTx)),
+            Event::RxRequest(_) => (State::Rxing(self), Err(Error::RxRequestDuringRx)),
         }
     }
 }

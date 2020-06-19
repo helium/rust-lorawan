@@ -227,8 +227,6 @@ where
                                     Ok(Response::TimeoutRequest(time)),
                                 )
                             }
-                            // tolerate idle
-                            radio::Response::Idle => (self.into(), Ok(Response::Idle)),
                             // anything other than TxComplete | Idle is unexpected
                             _ => {
                                 panic!("SendingJoin: Unexpected radio response: {:?}", response);
