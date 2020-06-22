@@ -1,3 +1,47 @@
+/*
+
+This is the State Machine for a LoRaWan super-state "Session". The only way
+to enter this state is for a device to be programmed in ABP mode (unimplemented)
+or from a successul OTAA implemented in the NoSession module. The only way
+to leave this state is to make a "Create Session" request which switches us
+over to the "NoSession" super-state.
+
+In this implementation, each state (eg: "Idle", "Txing") is a struct. When
+an event is handled (eg: "SendData", "TxComplete"), a transition may or may
+not occur. Regardless, a response is always given to the client, and those
+are indicated here in paranthesis (ie: "(Sending)").
+
+O
+│
+╔═══════════════════╗                                ╔════════════════════╗
+║ Idle              ║                                ║ Txing              ║
+║          SendData ║       if async       (Sending) ║                    ║
+║          ─────────╫───────────────┬───────────────>║                    ║
+║                   ║               │                ║         TxComplete ║
+╚═══════════════════╝               │                ║          ──────────╫───┐
+      ^                             │                ╚════════════════════╝   │
+      │                             │                                         │
+      │                             │                                         │
+┌─────┘    ╔═══════════════════╗    │          ╔════════════════════╗         │
+│          ║ WaitingForRx      ║    │          ║ WaitingForRxWindow ║         │
+│          ║ ╔═════════════╗   ║    │else sync ║  ╔═════════════╗   ║         │
+│          ║ ║ RxWindow1   ║   ║    └──────────╫─>║ RxWindow1   ║<──╫─────────┘
+│(DataDown)║ ║    Rx       ║   ║   (TimeoutReq)║  ║             ║   ║(TimeoutReq)
+├──────────╫─╫───────      ║   ║(TimeoutReq)   ║  ║    Timeout  ║   ║
+│          ║ ║    Timeout  ║<──╫───────────────╫──╫──────────── ║   ║
+│          ║ ║    ─────────╫───╫──┐            ║  ╚═════════════╝   ║
+│          ║ ╚═════════════╝   ║  │            ║                    ║
+│          ║ ╔═════════════╗   ║  │(TimeoutReq)║   ╔═════════════╗  ║
+│(DataDown)║ ║ RxWindow2   ║   ║  └────────────╫─> ║ RxWindow2   ║  ║
+├──────────╫─╫──┐ Rx       ║   ║               ║   ║             ║  ║
+│          ║ ║  └───       ║   ║(TimeoutReq)   ║   ║    Timeout  ║  ║
+│ if conf  ║ ║    Timeout  ║<──╫───────────────╫───╫──────────── ║  ║
+│ (NoACK)  ║ ║   ┌──────── ║   ║               ║   ╚═════════════╝  ║
+└──────────╫─╫───┘         ║   ║               ║                    ║
+else(Ready)║ ╚═════════════╝   ║               ║                    ║
+           ╚═══════════════════╝               ╚════════════════════╝
+ */
+
 use super::super::no_session::SessionData;
 use super::super::State as SuperState;
 use super::super::*;
