@@ -7,7 +7,7 @@ pub mod session;
 use session::Session;
 
 pub struct Shared<R: radio::PhyRxTx + Timings> {
-    radio: radio::State<R>,
+    radio: R,
     credentials: Credentials,
     region: RegionalConfiguration,
     mac: Mac,
@@ -18,7 +18,7 @@ pub struct Shared<R: radio::PhyRxTx + Timings> {
 
 impl<R: radio::PhyRxTx + Timings> Shared<R> {
     pub fn new(
-        radio: radio::State<R>,
+        radio: R,
         credentials: Credentials,
         region: RegionalConfiguration,
         mac: Mac,

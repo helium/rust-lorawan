@@ -39,8 +39,8 @@ pub enum Response {
     ReadyToSend
 }
 
-pub enum Error {
-    RadioError(radio::Error), // error: unhandled event
+pub enum Error<R: radio::PhyRxTx> {
+    RadioError(radio::Error<R>), // error: unhandled event
     SessionError(session::Error),
     NoSessionError(no_session::Error),
 }
@@ -55,6 +55,23 @@ where
     RadioEvent(radio::Event<'a, R>),
     Timeout,
     SendData(SendData<'a>),
+}
+
+impl<'a, R> core::fmt::Debug for Event<'a, R>
+    where
+        R: radio::PhyRxTx,
+{
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+
+        let event = match self {
+            Event::NewSession => "NewSession",
+            Event::RadioEvent(_) => "RadioEvent(?)",
+            Event::Timeout => "Timeout",
+            Event::SendData(_) => "SendData",
+        };
+        write!(f, "lorawan_device::Event::{}", event)
+
+    }
 }
 
 pub struct SendData<'a> {
@@ -88,6 +105,7 @@ pub trait Timings {
 
 impl<R: radio::PhyRxTx + Timings> Device<R> {
     pub fn new(
+        radio: R,
         deveui: [u8; 8],
         appeui: [u8; 8],
         appkey: [u8; 16],
@@ -98,7 +116,7 @@ impl<R: radio::PhyRxTx + Timings> Device<R> {
 
         Device {
             state: State::new(Shared::new(
-                radio::State::default(),
+                radio,
                 Credentials::new(appeui, deveui, appkey),
                 region,
                 Mac::default(),
@@ -108,15 +126,20 @@ impl<R: radio::PhyRxTx + Timings> Device<R> {
         }
     }
 
+    pub fn get_radio(&mut self) -> &mut R {
+        match &mut self.state {
+            State::NoSession(state) => state.get_mut_radio(),
+            State::Session(state) => state.get_mut_radio(),
+        }
+    }
+
     pub fn send(
         self,
-        radio: &mut R,
         data: &[u8],
         fport: u8,
         confirmed: bool,
-    ) -> (Self, Result<Response, Error>) {
+    ) -> (Self, Result<Response, Error<R>>) {
         self.handle_event(
-            radio,
             Event::SendData(SendData {
                 data,
                 fport,
@@ -127,12 +150,11 @@ impl<R: radio::PhyRxTx + Timings> Device<R> {
 
     pub fn handle_event(
         mut self,
-        radio: &mut R,
         event: Event<R>,
-    ) -> (Self, Result<Response, Error>) {
+    ) -> (Self, Result<Response, Error<R>>) {
         match self.state {
-            State::NoSession(state) => state.handle_event(radio, event),
-            State::Session(state) => state.handle_event(radio, event),
+            State::NoSession(state) => state.handle_event(event),
+            State::Session(state) => state.handle_event(event),
         }
         // self.state = new_state;
         // (self, response)

@@ -6,40 +6,47 @@ pub use types::*;
 
 use super::TimestampMs;
 
-pub enum PhyResponse {
-    Busy,
+#[derive(Debug)]
+pub enum Event<'a, R>
+    where
+        R: PhyRxTx,
+{
+    TxRequest(TxConfig, &'a mut Vec<u8, U256>),
+    RxRequest(RfConfig),
+    CancelRx,
+    PhyEvent(R::PhyEvent),
+}
+
+
+pub enum Response<R>
+    where
+        R: PhyRxTx,
+{
+    Idle,
+    Txing,
+    Rxing,
     TxDone(TimestampMs),
     RxDone(RxQuality),
-    TxError,
-    RxError,
+    PhyResponse(R::PhyResponse)
 }
 
 #[derive(Debug)]
-pub enum PhyError {
-    TxError,
-    RxError,
+pub enum Error<R>
+    where
+        R: PhyRxTx,
+{
+    PhyResponse(R::PhyError)
 }
 
-mod state_machine;
-
-pub use state_machine::{Error, Event, Response, StateWrapper as State};
-
-pub trait PhyRxTx {
+pub trait PhyRxTx{
     type PhyEvent;
-    fn send(&mut self, buffer: &mut [u8]);
+    type PhyResponse;
+    type PhyError;
+
+    fn get_mut_radio(&mut self) -> &mut Self;
 
     // we require mutability so we may decrypt in place
     fn get_received_packet(&mut self) -> &mut Vec<u8, U256>;
-
-    fn cancel_tx(&mut self) -> Result<(), PhyError> {
-        Ok(())
-    }
-    fn cancel_rx(&mut self) -> Result<(), PhyError> {
-        Ok(())
-    }
-    fn configure_tx(&mut self, config: TxConfig);
-    fn configure_rx(&mut self, config: RfConfig);
-    fn set_rx(&mut self);
-
-    fn handle_phy_event(&mut self, event: Self::PhyEvent) -> Option<PhyResponse>;
+    fn handle_event(&mut self, event: Event<Self>) -> Result<Response<Self>, Error<Self>>
+    where Self: core::marker::Sized;
 }

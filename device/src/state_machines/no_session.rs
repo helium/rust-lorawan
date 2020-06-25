@@ -62,16 +62,24 @@ where
         })
     }
 
+    pub fn get_mut_radio(&mut self) -> &mut R {
+        match self {
+            NoSession::Idle(state) => state.get_mut_radio(),
+            NoSession::SendingJoin(state) => state.get_mut_radio(),
+            NoSession::WaitingForRxWindow(state) => state.get_mut_radio(),
+            NoSession::WaitingForJoinResponse(state) => state.get_mut_radio(),
+        }
+    }
+
     pub fn handle_event(
         mut self,
-        radio: &mut R,
         event: Event<R>,
-    ) -> (Device<R>, Result<Response, super::super::Error>) {
+    ) -> (Device<R>, Result<Response, super::super::Error<R>>) {
         match self {
-            NoSession::Idle(state) => state.handle_event(radio, event),
-            NoSession::SendingJoin(state) => state.handle_event(radio, event),
-            NoSession::WaitingForRxWindow(state) => state.handle_event(radio, event),
-            NoSession::WaitingForJoinResponse(state) => state.handle_event(radio, event),
+            NoSession::Idle(state) => state.handle_event(event),
+            NoSession::SendingJoin(state) => state.handle_event(event),
+            NoSession::WaitingForRxWindow(state) => state.handle_event(event),
+            NoSession::WaitingForJoinResponse(state) => state.handle_event( event),
         }
     }
 }
@@ -92,11 +100,14 @@ impl<'a, R> Idle<R>
 where
     R: radio::PhyRxTx + Timings,
 {
+    fn get_mut_radio(&mut self) -> &mut R {
+        self.shared.radio.get_mut_radio()
+    }
+
     pub fn handle_event(
         mut self,
-        radio: &'a mut R,
         event: Event<R>,
-    ) -> (Device<R>, Result<Response, super::super::Error>) {
+    ) -> (Device<R>, Result<Response, super::super::Error<R>>) {
         match event {
             // NewSession Request or a Timeout from previously failed Join attempt
             Event::NewSession | Event::Timeout => {
@@ -105,7 +116,7 @@ where
                     radio::Event::TxRequest(tx_config, &mut self.shared.buffer);
 
                 // send the transmit request to the radio
-                match self.shared.radio.handle_event(radio, radio_event) {
+                match &self.shared.radio.handle_event(radio_event) {
                     Ok(response) => {
                         match response {
                             // intermediate state where we wait for Join to complete sending
@@ -116,19 +127,19 @@ where
                             ),
                             // directly jump to waiting for RxWindow
                             // allows for synchronous sending
-                            radio::Response::TxComplete(ms) => {
-                                let time = join_rx_window_timeout(&self.shared.region, ms) as i32 + radio.get_rx_window_offset_ms();
+                            radio::Response::TxDone(ms) => {
+                                let time = join_rx_window_timeout(&self.shared.region, *ms) as i32 + self.shared.radio.get_rx_window_offset_ms();
                                 (
                                     self.to_waiting_rxwindow(devnonce).into(),
                                     Ok(Response::TimeoutRequest(time as u32)),
                                 )
                             }
                             _ => {
-                                panic!("Idle: Unexpected radio response: {:?}", response);
+                                panic!("NoSession::Idle:: Unexpected radio response");
                             }
                         }
                     }
-                    Err(e) => (self.into(), Err(e.into())),
+                    Err(e) => panic!("NoSession::Idle::RadioError"),
                 }
             }
             Event::RadioEvent(radio_event) => {
@@ -206,32 +217,39 @@ impl<R> SendingJoin<R>
 where
     R: radio::PhyRxTx + Timings,
 {
+    fn get_mut_radio(&mut self) -> &mut R {
+        self.shared.radio.get_mut_radio()
+    }
+
     pub fn handle_event(
         mut self,
-        radio: &mut R,
         event: Event<R>,
-    ) -> (Device<R>, Result<Response, super::super::Error>) {
+    ) -> (Device<R>, Result<Response, super::super::Error<R>>) {
         match event {
             // we are waiting for the async tx to complete
             Event::RadioEvent(radio_event) => {
                 // send the transmit request to the radio
-                match self.shared.radio.handle_event(radio, radio_event) {
+
+                let offset = self.shared.radio.get_rx_window_offset_ms();
+
+                match self.shared.radio.handle_event(radio_event) {
                     Ok(response) => {
                         match response {
                             // expect a complete transmit
-                            radio::Response::TxComplete(ms) => {
-                                let time = join_rx_window_timeout(&self.shared.region, ms) as i32 + radio.get_rx_window_offset_ms();                                (
+                            radio::Response::TxDone(ms) => {
+                                let time = join_rx_window_timeout(&self.shared.region, ms) as i32 + offset;                                (
                                     WaitingForRxWindow::from(self).into(),
                                     Ok(Response::TimeoutRequest(time as u32)),
                                 )
                             }
                             // anything other than TxComplete | Idle is unexpected
                             _ => {
-                                panic!("SendingJoin: Unexpected radio response: {:?}", response);
+                                panic!("SendingJoin: Unexpected radio response");
                             }
                         }
                     }
-                    Err(e) => (self.into(), Err(e.into())),
+                    Err(e) => panic!("SendingJoin: RadioError"),
+
                 }
             }
             // anything other than a RadioEvent is unexpected
@@ -268,11 +286,14 @@ impl<R> WaitingForRxWindow<R>
 where
     R: radio::PhyRxTx + Timings,
 {
+    fn get_mut_radio(&mut self) -> &mut R {
+        self.shared.radio.get_mut_radio()
+    }
+
     pub fn handle_event<'a>(
         mut self,
-        radio: &mut R,
         event: Event<R>,
-    ) -> (Device<R>, Result<Response, super::super::Error>) {
+    ) -> (Device<R>, Result<Response, super::super::Error<R>>) {
         match event {
             // we are waiting for a Timeout
             Event::Timeout => {
@@ -286,14 +307,14 @@ where
                 match self
                     .shared
                     .radio
-                    .handle_event(radio, radio::Event::RxRequest(rx_config))
+                    .handle_event(radio::Event::RxRequest(rx_config))
                 {
                     // TODO: pass timeout
                     Ok(_) => (
                         WaitingForJoinResponse::from(self).into(),
                         Ok(Response::WaitingForJoinAccept),
                     ),
-                    Err(e) => (self.into(), Err(e.into())),
+                    Err(e) => panic!("WaitingForRxWindow RadioError"),
                 }
             }
             // anything other than a Timeout is unexpected
@@ -330,19 +351,22 @@ impl<R> WaitingForJoinResponse<R>
 where
     R: radio::PhyRxTx + Timings,
 {
+    fn get_mut_radio(&mut self) -> &mut R {
+        self.shared.radio.get_mut_radio()
+    }
+
     pub fn handle_event<'a>(
         mut self,
-        radio: &mut R,
         event: Event<R>,
-    ) -> (Device<R>, Result<Response, super::super::Error>) {
+    ) -> (Device<R>, Result<Response, super::super::Error<R>>) {
         match event {
             // we are waiting for the async tx to complete
             Event::RadioEvent(radio_event) => {
                 // send the transmit request to the radio
-                match self.shared.radio.handle_event(radio, radio_event) {
+                match &self.shared.radio.handle_event(radio_event) {
                     Ok(response) => match response {
-                        radio::Response::Rx(quality) => {
-                            let packet = lorawan_parse(radio.get_received_packet()).unwrap();
+                        radio::Response::RxDone(quality) => {
+                            let packet = lorawan_parse(self.shared.radio.get_received_packet()).unwrap();
 
                             if let PhyPayload::JoinAccept(join_accept) = packet {
                                 if let JoinAcceptPayload::Encrypted(encrypted) = join_accept {
@@ -366,7 +390,7 @@ where
                         }
                         _ => (self.into(), Ok(Response::WaitingForJoinAccept)),
                     },
-                    Err(e) => (self.into(), Err(e.into())),
+                    Err(e) => panic!("SendingJoin:: RadioError"),
                 }
             }
             // anything other than a RadioEvent is unexpected

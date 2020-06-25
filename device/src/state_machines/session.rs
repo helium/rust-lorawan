@@ -97,16 +97,25 @@ where
             state: SuperState::Session(Session::Idle(Idle { shared, session })),
         }
     }
+
+    pub fn get_mut_radio(&mut self) -> &mut R {
+        match self {
+            Session::Idle(state) => state.get_mut_radio(),
+            Session::SendingData(state) => state.get_mut_radio(),
+            Session::WaitingForRxWindow(state) => state.get_mut_radio(),
+            Session::WaitingForRx(state) => state.get_mut_radio(),
+        }
+    }
+
     pub fn handle_event(
         mut self,
-        radio: &mut R,
         event: Event<R>,
-    ) -> (Device<R>, Result<Response, super::super::Error>) {
+    ) -> (Device<R>, Result<Response, super::super::Error<R>>) {
         match self {
-            Session::Idle(state) => state.handle_event(radio, event),
-            Session::SendingData(state) => state.handle_event(radio, event),
-            Session::WaitingForRxWindow(state) => state.handle_event(radio, event),
-            Session::WaitingForRx(state) => state.handle_event(radio, event),
+            Session::Idle(state) => state.handle_event(event),
+            Session::SendingData(state) => state.handle_event(event),
+            Session::WaitingForRxWindow(state) => state.handle_event(event),
+            Session::WaitingForRx(state) => state.handle_event(event),
         }
     }
 }
@@ -115,6 +124,10 @@ impl<'a, R> Idle<R>
 where
     R: radio::PhyRxTx + Timings,
 {
+    fn get_mut_radio(&mut self) -> &mut R {
+        self.shared.radio.get_mut_radio()
+    }
+
     fn prepare_buffer(&mut self, data: &SendData) {
         let mut phy = DataPayloadCreator::new();
         phy.set_confirmed(data.confirmed)
@@ -150,9 +163,8 @@ where
     }
     pub fn handle_event(
         mut self,
-        radio: &'a mut R,
         event: Event<R>,
-    ) -> (Device<R>, Result<Response, super::super::Error>) {
+    ) -> (Device<R>, Result<Response, super::super::Error<R>>) {
         match event {
             Event::SendData(send_data) => {
                 // encodes the packet and places it in send buffer
@@ -177,7 +189,7 @@ where
                 let confirmed = send_data.confirmed;
 
                 // send the transmit request to the radio
-                match self.shared.radio.handle_event(radio, event) {
+                match self.shared.radio.handle_event(event) {
                     Ok(response) => {
                         match response {
                             // intermediate state where we wait for Join to complete sending
@@ -188,16 +200,16 @@ where
                             ),
                             // directly jump to waiting for RxWindow
                             // allows for synchronous sending
-                            radio::Response::TxComplete(ms) => {
+                            radio::Response::TxDone(ms) => {
                                 data_rxwindow1_timeout(Session::Idle(self), confirmed, ms)
                             }
                             _ => {
-                                panic!("Idle: Unexpected radio response: {:?}", response);
+                                panic!("Idle: Unexpected radio response");
                             }
                         }
                     }
                     Err(e) => {
-                        panic!("Radio Error when Idle: {:?}", e)
+                        panic!("Radio Error when Idle")
                         //({self.into(), Err(e.into())),
                         }
                     }
@@ -252,31 +264,34 @@ impl<R> SendingData<R>
 where
     R: radio::PhyRxTx + Timings,
 {
+    fn get_mut_radio(&mut self) -> &mut R {
+        self.shared.radio.get_mut_radio()
+    }
+
     pub fn handle_event<'a>(
         mut self,
-        radio: &'a mut R,
         event: Event<R>,
-    ) -> (Device<R>, Result<Response, super::super::Error>) {
+    ) -> (Device<R>, Result<Response, super::super::Error<R>>) {
         match event {
             // we are waiting for the async tx to complete
             Event::RadioEvent(radio_event) => {
                 // send the transmit request to the radio
-                match self.shared.radio.handle_event(radio, radio_event) {
+                match self.shared.radio.handle_event(radio_event) {
                     Ok(response) => {
                         match response {
                             // expect a complete transmit
-                            radio::Response::TxComplete(ms) => {
+                            radio::Response::TxDone(ms) => {
                                 let confirmed = self.confirmed;
                                 data_rxwindow1_timeout(Session::SendingData(self), confirmed,ms)
                             }
                             // anything other than TxComplete is unexpected
                             _ => {
-                                panic!("SendingData: Unexpected radio response: {:?}", response);
+                                panic!("SendingData: Unexpected radio response");
                             }
                         }
                     }
                     Err(e) => {
-                        panic!("Radio Error when SendingData: {:?}", e)
+                        panic!("Radio Error when SendingData")
                     },
                 }
             }
@@ -314,12 +329,14 @@ impl<'a, R> WaitingForRxWindow<R>
 where
     R: radio::PhyRxTx + Timings,
 {
+    fn get_mut_radio(&mut self) -> &mut R {
+        self.shared.radio.get_mut_radio()
+    }
 
     pub fn handle_event(
         mut self,
-        radio: &'a mut R,
         event: Event<R>,
-    ) -> (Device<R>, Result<Response, super::super::Error>) {
+    ) -> (Device<R>, Result<Response, super::super::Error<R>>) {
         match event {
             // we are waiting for a Timeout
             Event::Timeout => {
@@ -333,7 +350,7 @@ where
                 match self
                     .shared
                     .radio
-                    .handle_event(radio, radio::Event::RxRequest(rx_config))
+                    .handle_event(radio::Event::RxRequest(rx_config))
                 {
                     Ok(_) => {
 
@@ -342,14 +359,14 @@ where
                             RxWindow::_1(time) => {
                                 let time_between_windows = self.shared.region.get_receive_delay2() -
                                     self.shared.region.get_receive_delay1();
-                                if time_between_windows > radio.get_rx_window_duration_ms() {
-                                    time + radio.get_rx_window_duration_ms()
+                                if time_between_windows > self.shared.radio.get_rx_window_duration_ms() {
+                                    time + self.shared.radio.get_rx_window_duration_ms()
                                 } else {
                                     time + time_between_windows
                                 }
                             },
                             // RxWindow2 can last however long
-                            RxWindow::_2(time) => time + radio.get_rx_window_duration_ms(),
+                            RxWindow::_2(time) => time + self.shared.radio.get_rx_window_duration_ms(),
                         };
                         (
                             WaitingForRx::from(self).into(),
@@ -357,7 +374,7 @@ where
                         )
                     }
                     Err(e) => {
-                        panic!("Radio Error when WaitingForRxWindow: {:?}", e)
+                        panic!("Radio Error when WaitingForRxWindow")
                         //(self.into(), Err(e.into()))
                     },
                 }
@@ -398,19 +415,22 @@ impl<'a, R> WaitingForRx<R>
 where
     R: radio::PhyRxTx + Timings,
 {
+    fn get_mut_radio(&mut self) -> &mut R {
+        self.shared.radio.get_mut_radio()
+    }
+
     pub fn handle_event(
         mut self,
-        radio: &'a mut R,
         event: Event<R>,
-    ) -> (Device<R>, Result<Response, super::super::Error>) {
+    ) -> (Device<R>, Result<Response, super::super::Error<R>>) {
         match event {
             // we are waiting for the async tx to complete
             Event::RadioEvent(radio_event) => {
                 // send the transmit request to the radio
-                match self.shared.radio.handle_event(radio, radio_event) {
+                match self.shared.radio.handle_event(radio_event) {
                     Ok(response) => match response {
-                        radio::Response::Rx(quality) => {
-                            let packet = lorawan_parse(radio.get_received_packet()).unwrap();
+                        radio::Response::RxDone(quality) => {
+                            let packet = lorawan_parse(self.shared.radio.get_received_packet()).unwrap();
                             if let PhyPayload::Data(data_frame) = packet {
                                 if let DataPayload::Encrypted(encrypted_data) = data_frame {
                                     let session = &mut self.session;
@@ -443,14 +463,14 @@ where
                         }
                         _ => (self.into(), Ok(Response::WaitingForDataDown)),
                     },
-                    Err(e) => (self.into(), Err(e.into())),
+                    Err(e) => panic!("WaitingForRx:: RadioError"),
                 }
             }
             Event::Timeout => {
 
                 // send the transmit request to the radio
-                if let Err(e) = self.shared.radio.handle_event(radio, radio::Event::CancelRx) {
-                    panic!("Error cancelling Rx: {:?}", e)
+                if let Err(e) = self.shared.radio.handle_event(radio::Event::CancelRx) {
+                    panic!("Error cancelling Rx");
                 }
 
                 match self.rx_window {
@@ -494,7 +514,7 @@ where
 
 }
 
-fn data_rxwindow1_timeout<R: radio::PhyRxTx + Timings>(state: Session<R>, confirmed: bool, timestamp_ms: TimestampMs) -> (Device<R>, Result<Response, super::super::Error>) {
+fn data_rxwindow1_timeout<R: radio::PhyRxTx + Timings>(state: Session<R>, confirmed: bool, timestamp_ms: TimestampMs) -> (Device<R>, Result<Response, super::super::Error<R>>) {
 
     let (new_state, first_window) = match state {
         Session::Idle(state) => {
