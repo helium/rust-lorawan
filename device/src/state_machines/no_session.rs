@@ -117,11 +117,10 @@ where
                             // directly jump to waiting for RxWindow
                             // allows for synchronous sending
                             radio::Response::TxComplete(ms) => {
-                                let time = join_rx_window_timeout(&self.shared.region, ms);
-
+                                let time = join_rx_window_timeout(&self.shared.region, ms) as i32 + radio.get_rx_window_offset_ms();
                                 (
                                     self.to_waiting_rxwindow(devnonce).into(),
-                                    Ok(Response::TimeoutRequest(time)),
+                                    Ok(Response::TimeoutRequest(time as u32)),
                                 )
                             }
                             _ => {
@@ -221,10 +220,9 @@ where
                         match response {
                             // expect a complete transmit
                             radio::Response::TxComplete(ms) => {
-                                let time = join_rx_window_timeout(&self.shared.region, ms);
-                                (
+                                let time = join_rx_window_timeout(&self.shared.region, ms) as i32 + radio.get_rx_window_offset_ms();                                (
                                     WaitingForRxWindow::from(self).into(),
-                                    Ok(Response::TimeoutRequest(time)),
+                                    Ok(Response::TimeoutRequest(time as u32)),
                                 )
                             }
                             // anything other than TxComplete | Idle is unexpected
