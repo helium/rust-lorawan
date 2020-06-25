@@ -1,4 +1,4 @@
-//#![no_std]
+#![no_std]
 
 use heapless::consts::*;
 use heapless::Vec;
