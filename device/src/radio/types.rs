@@ -34,7 +34,7 @@ pub struct RfConfig {
 impl Default for RfConfig {
     fn default() -> RfConfig {
         RfConfig {
-            frequency: 902300000,
+            frequency: 902_300_000,
             bandwidth: Bandwidth::_500KHZ,
             spreading_factor: SpreadingFactor::_10,
             coding_rate: CodingRate::_4_5,
@@ -68,10 +68,10 @@ impl RxQuality {
         RxQuality { rssi, snr }
     }
 
-    pub fn rssi(&self) -> i16 {
+    pub fn rssi(self) -> i16 {
         self.rssi
     }
-    pub fn snr(&self) -> i8 {
+    pub fn snr(self) -> i8 {
         self.snr
     }
 }

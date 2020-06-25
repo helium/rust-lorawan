@@ -26,7 +26,7 @@ pub struct Device<R: radio::PhyRxTx + Timings> {
 #[derive(Debug)]
 pub enum Response {
     Idle,
-    DataDown,         // packet received
+    DataDown,   // packet received
     TxComplete, // packet sent
     TimeoutRequest(TimestampMs),
     SendingJoinRequest,
@@ -36,7 +36,7 @@ pub enum Response {
     SendingDataUp,
     WaitingForDataDown,
     NoAck,
-    ReadyToSend
+    ReadyToSend,
 }
 
 pub enum Error<R: radio::PhyRxTx> {
@@ -45,7 +45,13 @@ pub enum Error<R: radio::PhyRxTx> {
     NoSessionError(no_session::Error),
 }
 
-type Confirmed = bool;
+impl<R> From<radio::Error<R>> for Error<R>
+where R: radio::PhyRxTx
+{
+    fn from(radio_error: radio::Error<R>) -> Error<R> {
+        Error::RadioError(radio_error)
+    }
+}
 
 pub enum Event<'a, R>
 where
@@ -58,11 +64,10 @@ where
 }
 
 impl<'a, R> core::fmt::Debug for Event<'a, R>
-    where
-        R: radio::PhyRxTx,
+where
+    R: radio::PhyRxTx,
 {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-
         let event = match self {
             Event::NewSession => "NewSession",
             Event::RadioEvent(_) => "RadioEvent(?)",
@@ -70,7 +75,6 @@ impl<'a, R> core::fmt::Debug for Event<'a, R>
             Event::SendData(_) => "SendData",
         };
         write!(f, "lorawan_device::Event::{}", event)
-
     }
 }
 
@@ -139,19 +143,14 @@ impl<R: radio::PhyRxTx + Timings> Device<R> {
         fport: u8,
         confirmed: bool,
     ) -> (Self, Result<Response, Error<R>>) {
-        self.handle_event(
-            Event::SendData(SendData {
-                data,
-                fport,
-                confirmed,
-            }),
-        )
+        self.handle_event(Event::SendData(SendData {
+            data,
+            fport,
+            confirmed,
+        }))
     }
 
-    pub fn handle_event(
-        mut self,
-        event: Event<R>,
-    ) -> (Self, Result<Response, Error<R>>) {
+    pub fn handle_event(self, event: Event<R>) -> (Self, Result<Response, Error<R>>) {
         match self.state {
             State::NoSession(state) => state.handle_event(event),
             State::Session(state) => state.handle_event(event),

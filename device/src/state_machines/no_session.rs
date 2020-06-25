@@ -2,7 +2,6 @@ use super::super::session::Session;
 use super::super::State as SuperState;
 use super::super::*;
 use super::Shared;
-use core::marker::PhantomData;
 use lorawan_encoding::{
     self,
     creator::JoinRequestCreator,
@@ -72,14 +71,14 @@ where
     }
 
     pub fn handle_event(
-        mut self,
+        self,
         event: Event<R>,
     ) -> (Device<R>, Result<Response, super::super::Error<R>>) {
         match self {
             NoSession::Idle(state) => state.handle_event(event),
             NoSession::SendingJoin(state) => state.handle_event(event),
             NoSession::WaitingForRxWindow(state) => state.handle_event(event),
-            NoSession::WaitingForJoinResponse(state) => state.handle_event( event),
+            NoSession::WaitingForJoinResponse(state) => state.handle_event(event),
         }
     }
 }
@@ -116,21 +115,22 @@ where
                     radio::Event::TxRequest(tx_config, &mut self.shared.buffer);
 
                 // send the transmit request to the radio
-                match &self.shared.radio.handle_event(radio_event) {
+                match self.shared.radio.handle_event(radio_event) {
                     Ok(response) => {
                         match response {
                             // intermediate state where we wait for Join to complete sending
                             // allows for asynchronous sending
                             radio::Response::Txing => (
-                                self.to_sending_join(devnonce).into(),
+                                self.into_sending_join(devnonce).into(),
                                 Ok(Response::SendingJoinRequest),
                             ),
                             // directly jump to waiting for RxWindow
                             // allows for synchronous sending
                             radio::Response::TxDone(ms) => {
-                                let time = join_rx_window_timeout(&self.shared.region, *ms) as i32 + self.shared.radio.get_rx_window_offset_ms();
+                                let time = join_rx_window_timeout(&self.shared.region, ms) as i32
+                                    + self.shared.radio.get_rx_window_offset_ms();
                                 (
-                                    self.to_waiting_rxwindow(devnonce).into(),
+                                    self.into_waiting_rxwindow(devnonce).into(),
                                     Ok(Response::TimeoutRequest(time as u32)),
                                 )
                             }
@@ -139,10 +139,10 @@ where
                             }
                         }
                     }
-                    Err(e) => panic!("NoSession::Idle::RadioError"),
+                    Err(e) => (self.into(), Err(e.into())),
                 }
             }
-            Event::RadioEvent(radio_event) => {
+            Event::RadioEvent(_radio_event) => {
                 panic!("Unexpected radio event while NoSession::Idle");
             }
             Event::SendData(_) => {
@@ -187,7 +187,7 @@ where
         (devnonce_copy, tx_config)
     }
 
-    fn to_sending_join(self, devnonce: DevNonce) -> SendingJoin<R> {
+    fn into_sending_join(self, devnonce: DevNonce) -> SendingJoin<R> {
         SendingJoin {
             shared: self.shared,
             join_attempts: self.join_attempts + 1,
@@ -195,7 +195,7 @@ where
         }
     }
 
-    fn to_waiting_rxwindow(self, devnonce: DevNonce) -> WaitingForRxWindow<R> {
+    fn into_waiting_rxwindow(self, devnonce: DevNonce) -> WaitingForRxWindow<R> {
         WaitingForRxWindow {
             shared: self.shared,
             join_attempts: self.join_attempts + 1,
@@ -237,7 +237,9 @@ where
                         match response {
                             // expect a complete transmit
                             radio::Response::TxDone(ms) => {
-                                let time = join_rx_window_timeout(&self.shared.region, ms) as i32 + offset;                                (
+                                let time =
+                                    join_rx_window_timeout(&self.shared.region, ms) as i32 + offset;
+                                (
                                     WaitingForRxWindow::from(self).into(),
                                     Ok(Response::TimeoutRequest(time as u32)),
                                 )
@@ -248,8 +250,7 @@ where
                             }
                         }
                     }
-                    Err(e) => panic!("SendingJoin: RadioError"),
-
+                    Err(e) => (self.into(), Err(e.into())),
                 }
             }
             // anything other than a RadioEvent is unexpected
@@ -290,7 +291,7 @@ where
         self.shared.radio.get_mut_radio()
     }
 
-    pub fn handle_event<'a>(
+    pub fn handle_event(
         mut self,
         event: Event<R>,
     ) -> (Device<R>, Result<Response, super::super::Error<R>>) {
@@ -314,7 +315,7 @@ where
                         WaitingForJoinResponse::from(self).into(),
                         Ok(Response::WaitingForJoinAccept),
                     ),
-                    Err(e) => panic!("WaitingForRxWindow RadioError"),
+                    Err(e) => (self.into(), Err(e.into())),
                 }
             }
             // anything other than a Timeout is unexpected
@@ -355,7 +356,7 @@ where
         self.shared.radio.get_mut_radio()
     }
 
-    pub fn handle_event<'a>(
+    pub fn handle_event(
         mut self,
         event: Event<R>,
     ) -> (Device<R>, Result<Response, super::super::Error<R>>) {
@@ -363,10 +364,11 @@ where
             // we are waiting for the async tx to complete
             Event::RadioEvent(radio_event) => {
                 // send the transmit request to the radio
-                match &self.shared.radio.handle_event(radio_event) {
+                match self.shared.radio.handle_event(radio_event) {
                     Ok(response) => match response {
-                        radio::Response::RxDone(quality) => {
-                            let packet = lorawan_parse(self.shared.radio.get_received_packet()).unwrap();
+                        radio::Response::RxDone(_quality) => {
+                            let packet =
+                                lorawan_parse(self.shared.radio.get_received_packet()).unwrap();
 
                             if let PhyPayload::JoinAccept(join_accept) = packet {
                                 if let JoinAcceptPayload::Encrypted(encrypted) = join_accept {
@@ -376,11 +378,11 @@ where
                                     if decrypt.validate_mic(credentials.appkey()) {
                                         let session = SessionData::derive_new(
                                             &decrypt,
-                                            &self.devnonce,
+                                            self.devnonce,
                                             credentials,
                                         );
                                         return (
-                                            Session::new(self.shared, session),
+                                            Session::new(self.shared, session).into(),
                                             Ok(Response::NewSession),
                                         );
                                     }
@@ -390,7 +392,7 @@ where
                         }
                         _ => (self.into(), Ok(Response::WaitingForJoinAccept)),
                     },
-                    Err(e) => panic!("SendingJoin:: RadioError"),
+                    Err(e) => (self.into(), Err(e.into())),
                 }
             }
             // anything other than a RadioEvent is unexpected
@@ -424,12 +426,12 @@ pub struct SessionData {
 impl SessionData {
     pub fn derive_new<T: core::convert::AsRef<[u8]>, F: lorawan_encoding::keys::CryptoFactory>(
         decrypt: &DecryptedJoinAcceptPayload<T, F>,
-        devnonce: &DevNonce,
+        devnonce: DevNonce,
         credentials: &Credentials,
     ) -> SessionData {
         SessionData {
-            newskey: decrypt.derive_newskey(devnonce, credentials.appkey()),
-            appskey: decrypt.derive_appskey(devnonce, credentials.appkey()),
+            newskey: decrypt.derive_newskey(&devnonce, credentials.appkey()),
+            appskey: decrypt.derive_appskey(&devnonce, credentials.appkey()),
             devaddr: DevAddr::new([
                 decrypt.dev_addr().as_ref()[0],
                 decrypt.dev_addr().as_ref()[1],

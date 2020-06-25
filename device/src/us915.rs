@@ -105,16 +105,15 @@ const ADR_ACK_LIMIT: usize = 64;
 const ADR_ACK_DELAY: usize = 32;
 const ACK_TIMEOUT: usize = 2; // random delay between 1 and 3 seconds
 
+#[derive(Default)]
 pub struct Configuration {
     subband: Option<u8>,
     last_tx: (u8, u8),
 }
+
 impl Configuration {
     pub fn new() -> Configuration {
-        Configuration {
-            subband: None,
-            last_tx: (0, 0),
-        }
+        Self::default()
     }
 
     pub fn set_channel_mask(&mut self, _chmask: ChannelMask) {

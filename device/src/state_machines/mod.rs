@@ -1,10 +1,8 @@
 use super::*;
 
 pub mod no_session;
-use no_session::NoSession;
 
 pub mod session;
-use session::Session;
 
 pub struct Shared<R: radio::PhyRxTx + Timings> {
     radio: R,
@@ -34,12 +32,4 @@ impl<R: radio::PhyRxTx + Timings> Shared<R> {
             buffer,
         }
     }
-}
-
-pub enum State<R>
-where
-    R: radio::PhyRxTx + Timings,
-{
-    NoSession(NoSession<R>),
-    Session(Session<R>),
 }
