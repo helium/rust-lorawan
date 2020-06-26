@@ -150,7 +150,7 @@ where
         let mut phy = DataPayloadCreator::new();
         phy.set_confirmed(data.confirmed)
             .set_f_port(data.fport)
-            .set_dev_addr(self.session.devaddr().clone())
+            .set_dev_addr(*self.session.devaddr())
             .set_fcnt(self.session.fcnt_up());
 
         let mut cmds = Vec::new();
