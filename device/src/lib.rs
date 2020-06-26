@@ -144,7 +144,7 @@ impl<R: radio::PhyRxTx + Timings> Device<R> {
         let shared = self.get_shared();
         shared.get_mut_credentials()
     }
-
+    
     fn get_shared(&mut self) -> &mut Shared<R> {
         match &mut self.state {
             State::NoSession(state) => state.get_mut_shared(),
