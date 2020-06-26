@@ -15,7 +15,8 @@ mod us915;
 use us915::Configuration as RegionalConfiguration;
 
 mod state_machines;
-use state_machines::{no_session, session, Shared};
+use state_machines::Shared;
+pub use state_machines::{no_session, session};
 
 type TimestampMs = u32;
 
@@ -40,16 +41,16 @@ pub enum Response {
 }
 
 pub enum Error<R: radio::PhyRxTx> {
-    RadioError(radio::Error<R>), // error: unhandled event
-    SessionError(session::Error),
-    NoSessionError(no_session::Error),
+    Radio(radio::Error<R>), // error: unhandled event
+    Session(session::Error),
+    NoSession(no_session::Error),
 }
 
 impl<R> From<radio::Error<R>> for Error<R>
 where R: radio::PhyRxTx
 {
     fn from(radio_error: radio::Error<R>) -> Error<R> {
-        Error::RadioError(radio_error)
+        Error::Radio(radio_error)
     }
 }
 
@@ -92,6 +93,10 @@ where
     Session(session::Session<R>),
 }
 
+trait CommonState<R: radio::PhyRxTx + Timings> {
+    fn get_mut_shared(&mut self) -> &mut Shared<R>;
+}
+
 use core::default::Default;
 impl<R> State<R>
 where
@@ -131,9 +136,19 @@ impl<R: radio::PhyRxTx + Timings> Device<R> {
     }
 
     pub fn get_radio(&mut self) -> &mut R {
+        let shared = self.get_shared();
+        shared.get_mut_radio()
+    }
+
+    pub fn get_credentials(&mut self) -> &mut Credentials {
+        let shared = self.get_shared();
+        shared.get_mut_credentials()
+    }
+
+    fn get_shared(&mut self) -> &mut Shared<R> {
         match &mut self.state {
-            State::NoSession(state) => state.get_mut_radio(),
-            State::Session(state) => state.get_mut_radio(),
+            State::NoSession(state) => state.get_mut_shared(),
+            State::Session(state) => state.get_mut_shared(),
         }
     }
 

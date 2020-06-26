@@ -15,6 +15,16 @@ pub struct Shared<R: radio::PhyRxTx + Timings> {
 }
 
 impl<R: radio::PhyRxTx + Timings> Shared<R> {
+
+    pub fn get_mut_radio(&mut self) -> &mut R {
+        &mut self.radio
+    }
+    pub fn get_mut_credentials(&mut self) -> &mut Credentials {
+        &mut self.credentials
+    }
+}
+
+impl<R: radio::PhyRxTx + Timings> Shared<R> {
     pub fn new(
         radio: R,
         credentials: Credentials,

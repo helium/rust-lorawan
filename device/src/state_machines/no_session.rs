@@ -31,6 +31,12 @@ macro_rules! into_state {
                 Device { state: SuperState::NoSession(NoSession::$from(state)) }
             }
         }
+
+        impl<R: radio::PhyRxTx + Timings> CommonState<R> for $from<R> {
+            fn get_mut_shared(&mut self) -> &mut Shared<R> {
+                &mut self.shared
+            }
+        }
     )*};
 }
 
@@ -61,12 +67,12 @@ where
         })
     }
 
-    pub fn get_mut_radio(&mut self) -> &mut R {
+    pub fn get_mut_shared(&mut self) -> &mut Shared<R> {
         match self {
-            NoSession::Idle(state) => state.get_mut_radio(),
-            NoSession::SendingJoin(state) => state.get_mut_radio(),
-            NoSession::WaitingForRxWindow(state) => state.get_mut_radio(),
-            NoSession::WaitingForJoinResponse(state) => state.get_mut_radio(),
+            NoSession::Idle(state) => state.get_mut_shared(),
+            NoSession::SendingJoin(state) => state.get_mut_shared(),
+            NoSession::WaitingForRxWindow(state) => state.get_mut_shared(),
+            NoSession::WaitingForJoinResponse(state) => state.get_mut_shared(),
         }
     }
 
@@ -99,10 +105,6 @@ impl<'a, R> Idle<R>
 where
     R: radio::PhyRxTx + Timings,
 {
-    fn get_mut_radio(&mut self) -> &mut R {
-        self.shared.radio.get_mut_radio()
-    }
-
     pub fn handle_event(
         mut self,
         event: Event<R>,
@@ -217,10 +219,6 @@ impl<R> SendingJoin<R>
 where
     R: radio::PhyRxTx + Timings,
 {
-    fn get_mut_radio(&mut self) -> &mut R {
-        self.shared.radio.get_mut_radio()
-    }
-
     pub fn handle_event(
         mut self,
         event: Event<R>,
@@ -287,10 +285,6 @@ impl<R> WaitingForRxWindow<R>
 where
     R: radio::PhyRxTx + Timings,
 {
-    fn get_mut_radio(&mut self) -> &mut R {
-        self.shared.radio.get_mut_radio()
-    }
-
     pub fn handle_event(
         mut self,
         event: Event<R>,
@@ -352,10 +346,6 @@ impl<R> WaitingForJoinResponse<R>
 where
     R: radio::PhyRxTx + Timings,
 {
-    fn get_mut_radio(&mut self) -> &mut R {
-        self.shared.radio.get_mut_radio()
-    }
-
     pub fn handle_event(
         mut self,
         event: Event<R>,

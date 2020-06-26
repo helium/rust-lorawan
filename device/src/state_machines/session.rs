@@ -71,12 +71,16 @@ enum RxWindow {
 macro_rules! into_state {
     ($($from:tt),*) => {
     $(
-        impl<R> From<$from<R>> for Device<R>
-        where
-            R: radio::PhyRxTx + Timings,
+        impl<R: radio::PhyRxTx + Timings> From<$from<R>> for Device<R>
         {
             fn from(state: $from<R>) -> Device<R> {
                 Device { state: SuperState::Session(Session::$from(state)) }
+            }
+        }
+
+        impl<R: radio::PhyRxTx + Timings> CommonState<R> for $from<R> {
+            fn get_mut_shared(&mut self) -> &mut Shared<R> {
+                &mut self.shared
             }
         }
     )*};
@@ -93,7 +97,19 @@ impl<R> From<Session<R>> for Device<R>
 
 into_state![Idle, SendingData, WaitingForRxWindow, WaitingForRx];
 
-pub enum Error {}
+pub enum Error {
+    RadioEventWhileIdle,
+    RadioEventWhileWaitingForRxWindow,
+}
+
+
+impl<R> From<Error> for super::super::Error<R>
+where R: radio::PhyRxTx
+{
+    fn from(error: Error) -> super::super::Error<R> {
+        super::super::Error::Session(error)
+    }
+}
 
 impl<R> Session<R>
 where
@@ -103,12 +119,12 @@ where
         Session::Idle(Idle { shared, session })
     }
 
-    pub fn get_mut_radio(&mut self) -> &mut R {
+    pub fn get_mut_shared(&mut self) -> &mut Shared<R> {
         match self {
-            Session::Idle(state) => state.get_mut_radio(),
-            Session::SendingData(state) => state.get_mut_radio(),
-            Session::WaitingForRxWindow(state) => state.get_mut_radio(),
-            Session::WaitingForRx(state) => state.get_mut_radio(),
+            Session::Idle(state) => state.get_mut_shared(),
+            Session::SendingData(state) => state.get_mut_shared(),
+            Session::WaitingForRxWindow(state) => state.get_mut_shared(),
+            Session::WaitingForRx(state) => state.get_mut_shared(),
         }
     }
 
@@ -125,14 +141,11 @@ where
     }
 }
 
+
 impl<'a, R> Idle<R>
 where
     R: radio::PhyRxTx + Timings,
 {
-    fn get_mut_radio(&mut self) -> &mut R {
-        self.shared.radio.get_mut_radio()
-    }
-
     fn prepare_buffer(&mut self, data: &SendData) {
         let mut phy = DataPayloadCreator::new();
         phy.set_confirmed(data.confirmed)
@@ -224,7 +237,7 @@ where
                 panic!("Unhandled NewSession request during active session");
             }
             Event::RadioEvent(_radio_event) => {
-                panic!("Unexpected radio event while Session::Idle");
+                (self.into(), Err(Error::RadioEventWhileIdle.into()))
             }
         }
     }
@@ -268,10 +281,6 @@ impl<R> SendingData<R>
 where
     R: radio::PhyRxTx + Timings,
 {
-    fn get_mut_radio(&mut self) -> &mut R {
-        self.shared.radio.get_mut_radio()
-    }
-
     pub fn handle_event(
         mut self,
         event: Event<R>,
@@ -328,10 +337,6 @@ impl<'a, R> WaitingForRxWindow<R>
 where
     R: radio::PhyRxTx + Timings,
 {
-    fn get_mut_radio(&mut self) -> &mut R {
-        self.shared.radio.get_mut_radio()
-    }
-
     pub fn handle_event(
         mut self,
         event: Event<R>,
@@ -378,10 +383,14 @@ where
                     Err(e) => (self.into(), Err(e.into())),
                 }
             }
+            Event::RadioEvent(_) => {
+                (self.into(), Err(Error::RadioEventWhileIdle.into()))
+            }
             // anything other than a Timeout is unexpected
-            Event::NewSession | Event::RadioEvent(_) | Event::SendData(_) => {
+            Event::NewSession | Event::SendData(_) => {
                 panic!("Unexpected event while WaitingForRxWindow")
             }
+
         }
     }
 }
@@ -414,9 +423,6 @@ impl<'a, R> WaitingForRx<R>
 where
     R: radio::PhyRxTx + Timings,
 {
-    fn get_mut_radio(&mut self) -> &mut R {
-        self.shared.radio.get_mut_radio()
-    }
 
     pub fn handle_event(
         mut self,
