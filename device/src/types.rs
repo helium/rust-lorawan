@@ -48,8 +48,8 @@ impl SessionKeys {
             | (session_devaddr[1] as u32) << 16
             | (session_devaddr[0] as u32) << 24;
         SessionKeys {
-            newskey: session_data.newskey().clone(),
-            appskey: session_data.appskey().clone(),
+            newskey: *session_data.newskey(),
+            appskey: *session_data.appskey(),
             devaddr,
         }
     }

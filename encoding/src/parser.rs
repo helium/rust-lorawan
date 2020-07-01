@@ -892,6 +892,7 @@ fixed_len_struct! {
     struct DevAddr[4];
 }
 
+#[allow(clippy::should_implement_trait)]
 impl<T: AsRef<[u8]>> DevAddr<T> {
     pub fn nwk_id(&self) -> u8 {
         self.0.as_ref()[0] >> 1
