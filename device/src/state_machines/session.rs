@@ -45,6 +45,7 @@ else(Ready)║ ╚═════════════╝   ║              
 use super::super::no_session::SessionData;
 use super::super::State as SuperState;
 use super::super::*;
+use super::CommonState;
 use as_slice::AsSlice;
 use lorawan_encoding::{
     self,
@@ -68,6 +69,10 @@ enum RxWindow {
     _2(u32),
 }
 
+trait SessionState<R: radio::PhyRxTx + Timings> {
+    fn get_session(&self) -> &SessionData;
+}
+
 macro_rules! into_state {
     ($($from:tt),*) => {
     $(
@@ -75,6 +80,12 @@ macro_rules! into_state {
         {
             fn from(state: $from<R>) -> Device<R> {
                 Device { state: SuperState::Session(Session::$from(state)) }
+            }
+        }
+
+        impl<R: radio::PhyRxTx + Timings> SessionState<R> for $from<R> {
+            fn get_session(&self) -> &SessionData {
+                &self.session
             }
         }
 
@@ -132,6 +143,15 @@ where
             Session::SendingData(state) => state.get_mut_shared(),
             Session::WaitingForRxWindow(state) => state.get_mut_shared(),
             Session::WaitingForRx(state) => state.get_mut_shared(),
+        }
+    }
+
+    pub fn get_session_data(&self) -> &SessionData {
+        match self {
+            Session::Idle(state) => state.get_session(),
+            Session::SendingData(state) => state.get_session(),
+            Session::WaitingForRxWindow(state) => state.get_session(),
+            Session::WaitingForRx(state) => state.get_session(),
         }
     }
 

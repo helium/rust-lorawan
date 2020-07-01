@@ -97,10 +97,6 @@ where
     Session(session::Session<R>),
 }
 
-trait CommonState<R: radio::PhyRxTx + Timings> {
-    fn get_mut_shared(&mut self) -> &mut Shared<R>;
-}
-
 use core::default::Default;
 impl<R> State<R>
 where
@@ -169,25 +165,15 @@ impl<R: radio::PhyRxTx + Timings> Device<R> {
         }))
     }
 
-    pub fn get_fcnt_up(&mut self) -> Option<u32> {}
-
-    pub fn get_downlink_payload(&mut self) -> Option<Vec<u8, U256>> {
-        let buffer = self.get_radio().get_received_packet();
-        if let Ok(parsed_packet) = lorawan_parse(buffer) {
-            if let PhyPayload::Data(data_frame) = parsed_packet {
-                if let DataPayload::Decrypted(decrypted) = data_frame {
-                    if let Ok(FRMPayload::Data(data)) = decrypted.frm_payload() {
-                        let mut return_data = Vec::new();
-                        return_data.extend_from_slice(data).unwrap();
-                        return Some(return_data);
-                    }
-                }
-            }
+    pub fn get_fcnt_up(&mut self) -> Option<u32> {
+        if let State::Session(session) = &self.state {
+            Some(session.get_session_data().fcnt_up())
+        } else {
+            None
         }
-        None
     }
 
-    pub fn get_downlink_mac(&mut self) -> Option<Vec<u8, U256>> {
+    pub fn get_downlink_payload(&mut self) -> Option<Vec<u8, U256>> {
         let buffer = self.get_radio().get_received_packet();
         if let Ok(parsed_packet) = lorawan_parse(buffer) {
             if let PhyPayload::Data(data_frame) = parsed_packet {
