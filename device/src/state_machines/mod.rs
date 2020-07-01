@@ -15,7 +15,6 @@ pub struct Shared<R: radio::PhyRxTx + Timings> {
 }
 
 impl<R: radio::PhyRxTx + Timings> Shared<R> {
-
     pub fn get_mut_radio(&mut self) -> &mut R {
         &mut self.radio
     }

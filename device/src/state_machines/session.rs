@@ -87,11 +87,13 @@ macro_rules! into_state {
 }
 
 impl<R> From<Session<R>> for Device<R>
-    where
+where
     R: radio::PhyRxTx + Timings,
-    {
+{
     fn from(session: Session<R>) -> Device<R> {
-        Device { state: SuperState::Session(session) }
+        Device {
+            state: SuperState::Session(session),
+        }
     }
 }
 
@@ -108,7 +110,8 @@ pub enum Error {
 }
 
 impl<R> From<Error> for super::super::Error<R>
-where R: radio::PhyRxTx
+where
+    R: radio::PhyRxTx,
 {
     fn from(error: Error) -> super::super::Error<R> {
         super::super::Error::Session(error)
@@ -144,7 +147,6 @@ where
         }
     }
 }
-
 
 impl<'a, R> Idle<R>
 where
@@ -211,7 +213,6 @@ where
                     &mut self.shared.buffer,
                 );
 
-
                 let confirmed = send_data.confirmed;
 
                 // send the transmit request to the radio
@@ -234,9 +235,7 @@ where
                             }
                         }
                     }
-                    Err(e) => {
-                        (self.into(), Err(e.into()))
-                    }
+                    Err(e) => (self.into(), Err(e.into())),
                 }
             }
             // tolerate unexpected timeout
@@ -391,14 +390,18 @@ where
                     Err(e) => (self.into(), Err(e.into())),
                 }
             }
-            Event::RadioEvent(_) => {
-                (self.into(), Err(Error::RadioEventWhileWaitingForRxWindow.into()))
-            }
-            Event::NewSession => {
-                (self.into(), Err(Error::NewSessionWhileWaitingForRxWindow.into()))
-            } Event::SendData(_) => {
-                (self.into(), Err(Error::SendDataWhileWaitingForRxWindow.into()))
-            }
+            Event::RadioEvent(_) => (
+                self.into(),
+                Err(Error::RadioEventWhileWaitingForRxWindow.into()),
+            ),
+            Event::NewSession => (
+                self.into(),
+                Err(Error::NewSessionWhileWaitingForRxWindow.into()),
+            ),
+            Event::SendData(_) => (
+                self.into(),
+                Err(Error::SendDataWhileWaitingForRxWindow.into()),
+            ),
         }
     }
 }
@@ -431,7 +434,6 @@ impl<'a, R> WaitingForRx<R>
 where
     R: radio::PhyRxTx + Timings,
 {
-
     pub fn handle_event(
         mut self,
         event: Event<R>,
@@ -443,7 +445,9 @@ where
                 match self.shared.radio.handle_event(radio_event) {
                     Ok(response) => match response {
                         radio::Response::RxDone(_quality) => {
-                            if let Ok(parsed_packet) = lorawan_parse(self.shared.radio.get_received_packet()) {
+                            if let Ok(parsed_packet) =
+                                lorawan_parse(self.shared.radio.get_received_packet())
+                            {
                                 if let PhyPayload::Data(data_frame) = parsed_packet {
                                     if let DataPayload::Encrypted(encrypted_data) = data_frame {
                                         let session = &mut self.session;
@@ -466,7 +470,9 @@ where
                                                     &mut decrypted.fhdr().fopts(),
                                                 );
 
-                                                if let Ok(FRMPayload::MACCommands(mac_cmds)) = decrypted.frm_payload() {
+                                                if let Ok(FRMPayload::MACCommands(mac_cmds)) =
+                                                    decrypted.frm_payload()
+                                                {
                                                     self.shared.mac.handle_downlink_macs(
                                                         &mut self.shared.region,
                                                         &mut mac_cmds.mac_commands(),
@@ -477,8 +483,6 @@ where
                                                     self.into_idle().into(),
                                                     Ok(Response::DataDown(fcnt)),
                                                 );
-
-
                                             }
                                         }
                                     }
@@ -529,11 +533,8 @@ where
                     ),
                 }
             }
-            Event::NewSession => {
-                (self.into(), Err(Error::NewSessionWhileWaitingForRx.into()))
-            } Event::SendData(_) => {
-                (self.into(), Err(Error::SendDataWhileWaitingForRx.into()))
-            }
+            Event::NewSession => (self.into(), Err(Error::NewSessionWhileWaitingForRx.into())),
+            Event::SendData(_) => (self.into(), Err(Error::SendDataWhileWaitingForRx.into())),
         }
     }
 

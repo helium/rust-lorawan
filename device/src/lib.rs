@@ -15,9 +15,9 @@ mod us915;
 use us915::Configuration as RegionalConfiguration;
 
 mod state_machines;
+use lorawan_encoding::parser::{parse as lorawan_parse, DataPayload, FRMPayload, PhyPayload};
 use state_machines::Shared;
 pub use state_machines::{no_session, session};
-use lorawan_encoding::parser::{parse as lorawan_parse, PhyPayload, DataPayload, FRMPayload};
 
 type TimestampMs = u32;
 
@@ -31,7 +31,7 @@ type FcntUp = u32;
 #[derive(Debug)]
 pub enum Response {
     Idle,
-    DataDown(FcntDown)  , // packet received
+    DataDown(FcntDown), // packet received
     TimeoutRequest(TimestampMs),
     SendingJoinRequest,
     WaitingForJoinAccept,
@@ -50,7 +50,8 @@ pub enum Error<R: radio::PhyRxTx> {
 }
 
 impl<R> From<radio::Error<R>> for Error<R>
-where R: radio::PhyRxTx
+where
+    R: radio::PhyRxTx,
 {
     fn from(radio_error: radio::Error<R>) -> Error<R> {
         Error::Radio(radio_error)
@@ -147,7 +148,7 @@ impl<R: radio::PhyRxTx + Timings> Device<R> {
         let shared = self.get_shared();
         shared.get_mut_credentials()
     }
-    
+
     fn get_shared(&mut self) -> &mut Shared<R> {
         match &mut self.state {
             State::NoSession(state) => state.get_mut_shared(),
@@ -167,6 +168,8 @@ impl<R: radio::PhyRxTx + Timings> Device<R> {
             confirmed,
         }))
     }
+
+    pub fn get_fcnt_up(&mut self) -> Option<u32> {}
 
     pub fn get_downlink_payload(&mut self) -> Option<Vec<u8, U256>> {
         let buffer = self.get_radio().get_received_packet();

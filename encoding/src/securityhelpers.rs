@@ -6,8 +6,8 @@
 //
 // author: Ivaylo Petrov <ivajloip@gmail.com>
 
-pub use aes::block_cipher::generic_array::GenericArray;
 use super::keys;
+pub use aes::block_cipher::generic_array::GenericArray;
 
 /// calculate_data_mic computes the MIC of a correct data packet.
 pub fn calculate_data_mic<M: keys::Mac>(data: &[u8], key: M, fcnt: u32) -> keys::MIC {
