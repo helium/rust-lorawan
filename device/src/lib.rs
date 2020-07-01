@@ -173,6 +173,16 @@ impl<R: radio::PhyRxTx + Timings> Device<R> {
         }
     }
 
+    pub fn get_session_keys(&mut self) -> Option<SessionKeys> {
+        if let State::Session(session) = &self.state {
+            Some(SessionKeys::copy_from_session_data(
+                session.get_session_data(),
+            ))
+        } else {
+            None
+        }
+    }
+
     pub fn get_downlink_payload(&mut self) -> Option<Vec<u8, U256>> {
         let buffer = self.get_radio().get_received_packet();
         if let Ok(parsed_packet) = lorawan_parse(buffer) {

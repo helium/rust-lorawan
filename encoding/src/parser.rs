@@ -896,6 +896,9 @@ impl<T: AsRef<[u8]>> DevAddr<T> {
     pub fn nwk_id(&self) -> u8 {
         self.0.as_ref()[0] >> 1
     }
+    pub fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
 }
 
 fixed_len_struct! {
