@@ -32,7 +32,6 @@ impl Credentials {
     }
 }
 
-#[derive(Debug)]
 pub struct SessionKeys {
     newskey: AES128,
     appskey: AES128,
@@ -44,14 +43,24 @@ use super::state_machines::no_session::SessionData;
 impl SessionKeys {
     pub fn copy_from_session_data(session_data: &SessionData) -> SessionKeys {
         let session_devaddr = session_data.devaddr().as_ref();
-        let devaddr = (session_devaddr[0] as u32)
-            | (session_devaddr[1] as u32) << 8
-            | (session_devaddr[2] as u32) << 16
-            | (session_devaddr[3] as u32) << 24;
+        let devaddr = (session_devaddr[3] as u32)
+            | (session_devaddr[2] as u32) << 8
+            | (session_devaddr[1] as u32) << 16
+            | (session_devaddr[0] as u32) << 24;
         SessionKeys {
             newskey: session_data.newskey().clone(),
             appskey: session_data.appskey().clone(),
             devaddr,
         }
+    }
+}
+use core::fmt;
+impl core::fmt::Debug for SessionKeys {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "SessionKeys {{ NewSKey: {:?}, AppsSKey: {:?}, DevAddr {:x}}}",
+            self.newskey, self.appskey, self.devaddr
+        )
     }
 }
