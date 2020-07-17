@@ -25,7 +25,6 @@ enum JoinRxWindow {
     _2(u32),
 }
 
-
 macro_rules! into_state {
     ($($from:tt),*) => {
     $(
@@ -153,7 +152,8 @@ where
                             radio::Response::TxDone(ms) => {
                                 let first_window = self.shared.region.get_join_accept_delay1() + ms;
                                 (
-                                    self.into_waiting_for_rxwindow(devnonce, first_window).into(),
+                                    self.into_waiting_for_rxwindow(devnonce, first_window)
+                                        .into(),
                                     Ok(Response::TimeoutRequest(first_window)),
                                 )
                             }
@@ -247,9 +247,6 @@ where
             // we are waiting for the async tx to complete
             Event::RadioEvent(radio_event) => {
                 // send the transmit request to the radio
-
-                let offset = self.shared.radio.get_rx_window_offset_ms();
-
                 match self.shared.radio.handle_event(radio_event) {
                     Ok(response) => {
                         match response {
@@ -325,28 +322,29 @@ where
                 {
                     // TODO: pass timeout
                     Ok(_) => {
-                    let window_close: u32 = match self.join_rx_window {
-                        // RxWindow1 one must timeout before RxWindow2
-                        JoinRxWindow::_1(time) => {
-                            let time_between_windows = self.shared.region.get_join_accept_delay2()
-                                - self.shared.region.get_join_accept_delay1();
-                            if time_between_windows
-                                > self.shared.radio.get_rx_window_duration_ms()
-                            {
-                                time + self.shared.radio.get_rx_window_duration_ms()
-                            } else {
-                                time + time_between_windows
+                        let window_close: u32 = match self.join_rx_window {
+                            // RxWindow1 one must timeout before RxWindow2
+                            JoinRxWindow::_1(time) => {
+                                let time_between_windows =
+                                    self.shared.region.get_join_accept_delay2()
+                                        - self.shared.region.get_join_accept_delay1();
+                                if time_between_windows
+                                    > self.shared.radio.get_rx_window_duration_ms()
+                                {
+                                    time + self.shared.radio.get_rx_window_duration_ms()
+                                } else {
+                                    time + time_between_windows
+                                }
                             }
-                        }
-                        // RxWindow2 can last however long
-                        JoinRxWindow::_2(time) => {
-                            time + self.shared.radio.get_rx_window_duration_ms()
-                        }
-                    };
-                    (
-                        WaitingForJoinResponse::from(self).into(),
-                        Ok(Response::TimeoutRequest(window_close)),
-                    )
+                            // RxWindow2 can last however long
+                            JoinRxWindow::_2(time) => {
+                                time + self.shared.radio.get_rx_window_duration_ms()
+                            }
+                        };
+                        (
+                            WaitingForJoinResponse::from(self).into(),
+                            Ok(Response::TimeoutRequest(window_close)),
+                        )
                     }
                     Err(e) => (self.into(), Err(e.into())),
                 }
@@ -449,7 +447,8 @@ where
                                 devnonce: self.devnonce,
                                 join_attempts: self.join_attempts,
                                 join_rx_window: JoinRxWindow::_2(t2),
-                            }.into(),
+                            }
+                            .into(),
                             Ok(Response::TimeoutRequest(t2)),
                         )
                     }
@@ -459,8 +458,8 @@ where
                             shared: self.shared,
                             join_attempts: self.join_attempts,
                         }
-                            .into(),
-                        Ok(Response::NoJoinAccept)
+                        .into(),
+                        Ok(Response::NoJoinAccept),
                     ),
                 }
             }
@@ -534,4 +533,3 @@ impl SessionData {
         self.fcnt_up += 1;
     }
 }
-
