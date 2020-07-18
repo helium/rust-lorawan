@@ -42,7 +42,7 @@ else(Ready)║ ╚═════════════╝   ║              
            ╚═══════════════════╝               ╚════════════════════╝
  */
 
-use super::super::no_session::SessionData;
+use super::super::no_session::{NoSession, SessionData};
 use super::super::State as SuperState;
 use super::super::*;
 use super::CommonState;
@@ -261,7 +261,8 @@ where
             // tolerate unexpected timeout
             Event::Timeout => (self.into(), Ok(Response::Idle)),
             Event::NewSession => {
-                panic!("Unhandled NewSession request during active session");
+                let no_session = NoSession::new(self.shared);
+                no_session.handle_event(Event::NewSession)
             }
             Event::RadioEvent(_radio_event) => {
                 (self.into(), Err(Error::RadioEventWhileIdle.into()))
@@ -499,10 +500,18 @@ where
                                                     );
                                                 }
 
-                                                return (
-                                                    self.into_idle().into(),
-                                                    Ok(Response::DataDown(fcnt)),
-                                                );
+                                                // the response is lost when the session is being reset...
+                                                // that could be confusing for the client
+                                                if self.session.fcnt_up() == (0xFFFF + 1) {
+                                                    let no_session = NoSession::new(self.shared);
+                                                    return no_session
+                                                        .handle_event(Event::NewSession);
+                                                } else {
+                                                    return (
+                                                        self.into_idle().into(),
+                                                        Ok(Response::DataDown(fcnt)),
+                                                    );
+                                                }
                                             }
                                         }
                                     }
@@ -539,18 +548,21 @@ where
                         )
                     }
                     // Timeout during second RxWindow leads to giving up
-                    RxWindow::_2(_) => (
-                        Idle {
-                            shared: self.shared,
-                            session: self.session,
-                        }
-                        .into(),
-                        if self.confirmed {
-                            Ok(Response::NoAck)
+                    RxWindow::_2(_) => {
+                        // the response is lost when the session is being reset...
+                        // that could be confusing for the client
+                        if self.session.fcnt_up() == (0xFFFF + 1) {
+                            let no_session = NoSession::new(self.shared);
+                            no_session.handle_event(Event::NewSession)
                         } else {
-                            Ok(Response::ReadyToSend)
-                        },
-                    ),
+                            let response = if self.confirmed {
+                                Ok(Response::NoAck)
+                            } else {
+                                Ok(Response::ReadyToSend)
+                            };
+                            (self.into_idle().into(), response)
+                        }
+                    }
                 }
             }
             Event::NewSession => (self.into(), Err(Error::NewSessionWhileWaitingForRx.into())),
