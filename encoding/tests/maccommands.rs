@@ -12,7 +12,7 @@ use lorawan_encoding::maccommands::*;
 macro_rules! test_helper {
     ( $data:ident, $name:ident, $type:ident, $size:expr, $( ( $method:ident, $val:expr ) ,)*) => {{
         {
-            assert!($type::new_as_mac_cmd(&$data[0..0]).is_err());
+            assert!($type::new_as_mac_cmd(&[]).is_err());
             let mc = $type::new_as_mac_cmd(&$data[..]);
             assert!(mc.is_ok());
             if let (MacCommand::$name(res), size) = mc.unwrap() {
@@ -83,7 +83,7 @@ fn test_link_adr_ans_new() {
         ([0x04], false, false, true, false),
         ([0x07], true, true, true, true),
     ];
-    assert!(LinkADRReqPayload::new_as_mac_cmd(&examples[0].0[0..0]).is_err());
+    assert!(LinkADRReqPayload::new_as_mac_cmd(&[]).is_err());
     for &(ref v, ref e_power, ref e_dr, ref e_cm, ref e_ack) in &examples {
         let mc = LinkADRAnsPayload::new_as_mac_cmd(&v[..]);
         assert!(mc.is_ok());
