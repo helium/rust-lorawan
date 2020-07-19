@@ -230,13 +230,11 @@ fn test_rx_timing_setup_ans() {
 
 #[test]
 fn test_parse_mac_commands_empty_downlink() {
-    let data = mac_cmds_payload();
     assert_eq!(parse_mac_commands(&[], false).count(), 0);
 }
 
 #[test]
 fn test_parse_mac_commands_empty_uplink() {
-    let data = mac_cmds_payload();
     assert_eq!(parse_mac_commands(&[], true).count(), 0);
 }
 
@@ -309,7 +307,6 @@ fn test_redundancy_number_of_transmissions() {
 
 #[test]
 fn test_frequency_new_bad_payload() {
-    let data = frequency_payload();
     assert!(Frequency::new(&[]).is_none());
 }
 
