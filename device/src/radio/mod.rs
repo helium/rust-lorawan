@@ -34,7 +34,7 @@ pub enum Error<R>
 where
     R: PhyRxTx,
 {
-    PhyResponse(R::PhyError),
+    PhyError(R::PhyError),
 }
 
 pub trait PhyRxTx {
