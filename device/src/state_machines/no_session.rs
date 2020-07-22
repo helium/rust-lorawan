@@ -149,7 +149,7 @@ where
                             // allows for asynchronous sending
                             radio::Response::Txing => (
                                 self.into_sending_join(devnonce).into(),
-                                Ok(Response::SendingJoinRequest),
+                                Ok(Response::JoinRequestSending),
                             ),
                             // directly jump to waiting for RxWindow
                             // allows for synchronous sending
@@ -424,14 +424,14 @@ where
                                         );
                                         return (
                                             Session::new(self.shared, session).into(),
-                                            Ok(Response::NewSession),
+                                            Ok(Response::JoinSuccess),
                                         );
                                     }
                                 }
                             }
-                            (self.into(), Ok(Response::WaitingForJoinAccept))
+                            (self.into(), Ok(Response::NoUpdate))
                         }
-                        _ => (self.into(), Ok(Response::WaitingForJoinAccept)),
+                        _ => (self.into(), Ok(Response::NoUpdate)),
                     },
                     Err(e) => (self.into(), Err(e.into())),
                 }

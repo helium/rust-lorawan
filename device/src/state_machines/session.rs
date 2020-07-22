@@ -248,7 +248,7 @@ where
                             // allows for asynchronous sending
                             radio::Response::Txing => (
                                 self.into_sending_data(confirmed).into(),
-                                Ok(Response::SendingDataUp(fcnt)),
+                                Ok(Response::UplinkSending(fcnt)),
                             ),
                             // directly jump to waiting for RxWindow
                             // allows for synchronous sending
@@ -264,7 +264,7 @@ where
                 }
             }
             // tolerate unexpected timeout
-            Event::Timeout => (self.into(), Ok(Response::Idle)),
+            Event::Timeout => (self.into(), Ok(Response::NoUpdate)),
             Event::NewSession => {
                 let no_session = NoSession::new(self.shared);
                 no_session.handle_event(Event::NewSession)
@@ -340,7 +340,7 @@ where
                 }
             }
             // tolerate unexpected timeout
-            Event::Timeout => (self.into(), Ok(Response::Idle)),
+            Event::Timeout => (self.into(), Ok(Response::NoUpdate)),
             // anything other than a RadioEvent is unexpected
             Event::NewSession | Event::SendData(_) => panic!("Unexpected event while SendingJoin"),
         }
@@ -514,7 +514,7 @@ where
                                                 } else {
                                                     return (
                                                         self.into_idle().into(),
-                                                        Ok(Response::DataDown(fcnt)),
+                                                        Ok(Response::DownlinkReceived(fcnt)),
                                                     );
                                                 }
                                             }
@@ -522,9 +522,9 @@ where
                                     }
                                 }
                             }
-                            (self.into(), Ok(Response::WaitingForDataDown))
+                            (self.into(), Ok(Response::NoUpdate))
                         }
-                        _ => (self.into(), Ok(Response::WaitingForDataDown)),
+                        _ => (self.into(), Ok(Response::NoUpdate)),
                     },
                     Err(e) => (self.into(), Err(e.into())),
                 }

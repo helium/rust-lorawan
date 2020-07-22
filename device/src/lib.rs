@@ -41,20 +41,18 @@ type FcntUp = u32;
 
 #[derive(Debug)]
 pub enum Response {
-    Idle,
-    DataDown(FcntDown), // packet received
+    NoUpdate,
     TimeoutRequest(TimestampMs),
-    SendingJoinRequest,
-    WaitingForJoinAccept,
-    Rxing,
-    NewSession,
-    SendingDataUp(FcntUp),
-    WaitingForDataDown,
+    JoinRequestSending,
+    JoinSuccess,
+    NoJoinAccept,
+    UplinkSending(FcntUp),
+    DownlinkReceived(FcntDown),
     NoAck,
     ReadyToSend,
-    NoJoinAccept,
 }
 
+#[derive(Debug)]
 pub enum Error<R: radio::PhyRxTx> {
     Radio(radio::Error<R>), // error: unhandled event
     Session(session::Error),
