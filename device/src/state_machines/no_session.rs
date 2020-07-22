@@ -136,7 +136,7 @@ where
     ) -> (Device<R, C>, Result<Response, super::super::Error<R>>) {
         match event {
             // NewSession Request or a Timeout from previously failed Join attempt
-            Event::NewSession | Event::Timeout => {
+            Event::NewSessionRequest | Event::TimeoutFired => {
                 let (devnonce, tx_config) = self.create_join_request::<C>();
                 let radio_event: radio::Event<R> =
                     radio::Event::TxRequest(tx_config, &mut self.shared.buffer);
@@ -172,7 +172,7 @@ where
             Event::RadioEvent(_radio_event) => {
                 (self.into(), Err(Error::RadioEventWhileIdle.into()))
             }
-            Event::SendData(_) => (self.into(), Err(Error::SendDataWhileNoSession.into())),
+            Event::SendDataRequest(_) => (self.into(), Err(Error::SendDataWhileNoSession.into())),
         }
     }
 
@@ -277,12 +277,12 @@ where
                 }
             }
             // anything other than a RadioEvent is unexpected
-            Event::NewSession => (
+            Event::NewSessionRequest => (
                 self.into(),
                 Err(Error::NewSessionWhileWaitingForJoinResponse.into()),
             ),
-            Event::Timeout => panic!("TODO: implement timeouts"),
-            Event::SendData(_) => (self.into(), Err(Error::SendDataWhileNoSession.into())),
+            Event::TimeoutFired => panic!("TODO: implement timeouts"),
+            Event::SendDataRequest(_) => (self.into(), Err(Error::SendDataWhileNoSession.into())),
         }
     }
 
@@ -316,7 +316,7 @@ where
     ) -> (Device<R, C>, Result<Response, super::super::Error<R>>) {
         match event {
             // we are waiting for a Timeout
-            Event::Timeout => {
+            Event::TimeoutFired => {
                 let rx_config = radio::RfConfig {
                     frequency: self.shared.region.get_join_accept_frequency1(),
                     bandwidth: radio::Bandwidth::_500KHZ,
@@ -361,11 +361,11 @@ where
                 self.into(),
                 Err(Error::RadioEventWhileWaitingForJoinWindow.into()),
             ),
-            Event::NewSession => (
+            Event::NewSessionRequest => (
                 self.into(),
                 Err(Error::NewSessionWhileWaitingForJoinWindow.into()),
             ),
-            Event::SendData(_) => (self.into(), Err(Error::SendDataWhileNoSession.into())),
+            Event::SendDataRequest(_) => (self.into(), Err(Error::SendDataWhileNoSession.into())),
         }
     }
 }
@@ -436,7 +436,7 @@ where
                     Err(e) => (self.into(), Err(e.into())),
                 }
             }
-            Event::Timeout => {
+            Event::TimeoutFired => {
                 // send the transmit request to the radio
                 if let Err(_e) = self.shared.radio.handle_event(radio::Event::CancelRx) {
                     panic!("Error cancelling Rx");
@@ -470,11 +470,11 @@ where
                     ),
                 }
             }
-            Event::NewSession => (
+            Event::NewSessionRequest => (
                 self.into(),
                 Err(Error::NewSessionWhileWaitingForJoinResponse.into()),
             ),
-            Event::SendData(_) => (self.into(), Err(Error::SendDataWhileNoSession.into())),
+            Event::SendDataRequest(_) => (self.into(), Err(Error::SendDataWhileNoSession.into())),
         }
     }
 }

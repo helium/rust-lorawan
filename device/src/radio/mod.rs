@@ -48,8 +48,8 @@ use core::fmt;
 
 pub trait PhyRxTx {
     type PhyEvent: fmt::Debug;
-    type PhyResponse: fmt::Debug;
     type PhyError: fmt::Debug;
+    type PhyResponse: fmt::Debug;
 
     fn get_mut_radio(&mut self) -> &mut Self;
 

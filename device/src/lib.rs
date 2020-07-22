@@ -72,10 +72,10 @@ pub enum Event<'a, R>
 where
     R: radio::PhyRxTx,
 {
-    NewSession,
+    NewSessionRequest,
+    SendDataRequest(SendData<'a>),
     RadioEvent(radio::Event<'a, R>),
-    Timeout,
-    SendData(SendData<'a>),
+    TimeoutFired,
 }
 
 impl<'a, R> core::fmt::Debug for Event<'a, R>
@@ -84,10 +84,10 @@ where
 {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let event = match self {
-            Event::NewSession => "NewSession",
+            Event::NewSessionRequest => "NewSessionRequest",
+            Event::SendDataRequest(_) => "SendDataRequest",
             Event::RadioEvent(_) => "RadioEvent(?)",
-            Event::Timeout => "Timeout",
-            Event::SendData(_) => "SendData",
+            Event::TimeoutFired => "TimeoutFired",
         };
         write!(f, "lorawan_device::Event::{}", event)
     }
@@ -181,7 +181,7 @@ where
         fport: u8,
         confirmed: bool,
     ) -> (Self, Result<Response, Error<R>>) {
-        self.handle_event(Event::SendData(SendData {
+        self.handle_event(Event::SendDataRequest(SendData {
             data,
             fport,
             confirmed,
