@@ -15,13 +15,13 @@ mod us915;
 use us915::Configuration as RegionalConfiguration;
 
 mod state_machines;
+use core::marker::PhantomData;
 use lorawan_encoding::{
     keys::CryptoFactory,
     parser::{
         parse_with_factory as lorawan_parse, DataHeader, DataPayload, FRMPayload, PhyPayload,
-    }
+    },
 };
-use core::marker::PhantomData;
 use state_machines::Shared;
 pub use state_machines::{no_session, session};
 
@@ -30,10 +30,10 @@ type TimestampMs = u32;
 pub struct Device<R, C>
 where
     R: radio::PhyRxTx + Timings,
-    C: CryptoFactory + Default
+    C: CryptoFactory + Default,
 {
     state: State<R>,
-    crypto: PhantomData<C>
+    crypto: PhantomData<C>,
 }
 
 type FcntDown = u32;
@@ -127,7 +127,7 @@ pub trait Timings {
 impl<R, C> Device<R, C>
 where
     R: radio::PhyRxTx + Timings,
-    C: CryptoFactory + Default
+    C: CryptoFactory + Default,
 {
     pub fn new(
         radio: R,

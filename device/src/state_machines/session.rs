@@ -47,13 +47,13 @@ use super::super::State as SuperState;
 use super::super::*;
 use super::CommonState;
 use as_slice::AsSlice;
+use generic_array::{typenum::U256, GenericArray};
 use lorawan_encoding::{
     self,
     creator::DataPayloadCreator,
     maccommands::SerializableMacCommand,
     parser::{parse_with_factory as lorawan_parse, *},
 };
-use generic_array::{GenericArray, typenum::U256};
 pub enum Session<R>
 where
     R: radio::PhyRxTx + Timings,
@@ -100,15 +100,15 @@ macro_rules! into_state {
     )*};
 }
 
-impl<R, C> From<Session<R>> for Device<R,C>
+impl<R, C> From<Session<R>> for Device<R, C>
 where
     R: radio::PhyRxTx + Timings,
-    C: CryptoFactory + Default
+    C: CryptoFactory + Default,
 {
     fn from(session: Session<R>) -> Device<R, C> {
         Device {
             state: SuperState::Session(session),
-            crypto: PhantomData::default()
+            crypto: PhantomData::default(),
         }
     }
 }
@@ -591,7 +591,9 @@ fn data_rxwindow1_timeout<R: radio::PhyRxTx + Timings, C: CryptoFactory + Defaul
     let (new_state, first_window) = match state {
         Session::Idle(state) => {
             let first_window = (state.shared.region.get_receive_delay1() as i32
-                + timestamp_ms as i32 + state.shared.radio.get_rx_window_offset_ms()) as u32;
+                + timestamp_ms as i32
+                + state.shared.radio.get_rx_window_offset_ms())
+                as u32;
             (
                 state.into_waiting_for_rxwindow(confirmed, first_window),
                 first_window,
@@ -599,7 +601,9 @@ fn data_rxwindow1_timeout<R: radio::PhyRxTx + Timings, C: CryptoFactory + Defaul
         }
         Session::SendingData(state) => {
             let first_window = (state.shared.region.get_receive_delay1() as i32
-                + timestamp_ms as i32 + state.shared.radio.get_rx_window_offset_ms()) as u32;
+                + timestamp_ms as i32
+                + state.shared.radio.get_rx_window_offset_ms())
+                as u32;
             (
                 state.into_waiting_for_rxwindow(confirmed, first_window),
                 first_window,

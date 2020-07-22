@@ -128,13 +128,12 @@ where
 
 impl<'a, R> Idle<R>
 where
-    R: radio::PhyRxTx + Timings
+    R: radio::PhyRxTx + Timings,
 {
-    pub fn handle_event<C: CryptoFactory + Default>
-    (
+    pub fn handle_event<C: CryptoFactory + Default>(
         mut self,
         event: Event<R>,
-    ) -> (Device<R,C>, Result<Response, super::super::Error<R>>) {
+    ) -> (Device<R, C>, Result<Response, super::super::Error<R>>) {
         match event {
             // NewSession Request or a Timeout from previously failed Join attempt
             Event::NewSession | Event::Timeout => {
@@ -184,7 +183,7 @@ where
 
         self.shared.buffer.clear();
 
-        let mut phy: JoinRequestCreator<[u8;23], C> = JoinRequestCreator::default();
+        let mut phy: JoinRequestCreator<[u8; 23], C> = JoinRequestCreator::default();
         let creds = &self.shared.credentials;
 
         let devnonce = [devnonce_bytes as u8, (devnonce_bytes >> 8) as u8];
@@ -258,8 +257,11 @@ where
                         match response {
                             // expect a complete transmit
                             radio::Response::TxDone(ms) => {
-                                let first_window = (self.shared.region.get_join_accept_delay1() as i32
-                                    + ms as i32 + self.shared.radio.get_rx_window_offset_ms()) as u32;
+                                let first_window = (self.shared.region.get_join_accept_delay1()
+                                    as i32
+                                    + ms as i32
+                                    + self.shared.radio.get_rx_window_offset_ms())
+                                    as u32;
                                 (
                                     self.into_waiting_for_rxwindow(first_window).into(),
                                     Ok(Response::TimeoutRequest(first_window)),
@@ -407,7 +409,9 @@ where
                 match self.shared.radio.handle_event(radio_event) {
                     Ok(response) => match response {
                         radio::Response::RxDone(_quality) => {
-                            if let Ok(PhyPayload::JoinAccept(join_accept)) = lorawan_parse(self.shared.radio.get_received_packet(), C::default()) {
+                            if let Ok(PhyPayload::JoinAccept(join_accept)) =
+                                lorawan_parse(self.shared.radio.get_received_packet(), C::default())
+                            {
                                 if let JoinAcceptPayload::Encrypted(encrypted) = join_accept {
                                     let credentials = &self.shared.credentials;
 
