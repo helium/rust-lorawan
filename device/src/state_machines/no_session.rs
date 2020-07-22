@@ -7,7 +7,7 @@ use lorawan_encoding::{
     creator::JoinRequestCreator,
     keys::AES128,
     parser::DevAddr,
-    parser::{parse as lorawan_parse, *},
+    parser::{parse_with_factory as lorawan_parse, *},
 };
 
 pub enum NoSession<R>
@@ -28,12 +28,16 @@ enum JoinRxWindow {
 macro_rules! into_state {
     ($($from:tt),*) => {
     $(
-        impl<R> From<$from<R>> for Device<R>
+        impl<R, C> From<$from<R>> for Device<R,C>
         where
             R: radio::PhyRxTx + Timings,
+            C: CryptoFactory + Default
         {
-            fn from(state: $from<R>) -> Device<R> {
-                Device { state: SuperState::NoSession(NoSession::$from(state)) }
+            fn from(state: $from<R>) -> Device<R, C> {
+                Device {
+                    crypto: PhantomData::default(),
+                    state: SuperState::NoSession(NoSession::$from(state))
+                    }
             }
         }
 
@@ -81,10 +85,10 @@ where
         }
     }
 
-    pub fn handle_event(
+    pub fn handle_event<C: CryptoFactory + Default>(
         self,
         event: Event<R>,
-    ) -> (Device<R>, Result<Response, super::super::Error<R>>) {
+    ) -> (Device<R, C>, Result<Response, super::super::Error<R>>) {
         match self {
             NoSession::Idle(state) => state.handle_event(event),
             NoSession::SendingJoin(state) => state.handle_event(event),
@@ -124,16 +128,17 @@ where
 
 impl<'a, R> Idle<R>
 where
-    R: radio::PhyRxTx + Timings,
+    R: radio::PhyRxTx + Timings
 {
-    pub fn handle_event(
+    pub fn handle_event<C: CryptoFactory + Default>
+    (
         mut self,
         event: Event<R>,
-    ) -> (Device<R>, Result<Response, super::super::Error<R>>) {
+    ) -> (Device<R,C>, Result<Response, super::super::Error<R>>) {
         match event {
             // NewSession Request or a Timeout from previously failed Join attempt
             Event::NewSession | Event::Timeout => {
-                let (devnonce, tx_config) = self.create_join_request();
+                let (devnonce, tx_config) = self.create_join_request::<C>();
                 let radio_event: radio::Event<R> =
                     radio::Event::TxRequest(tx_config, &mut self.shared.buffer);
 
@@ -172,13 +177,14 @@ where
         }
     }
 
-    fn create_join_request(&mut self) -> (DevNonce, radio::TxConfig) {
+    fn create_join_request<C: CryptoFactory + Default>(&mut self) -> (DevNonce, radio::TxConfig) {
         let mut random = (self.shared.get_random)();
         // use lowest 16 bits for devnonce
         let devnonce_bytes = random as u16;
 
         self.shared.buffer.clear();
-        let mut phy = JoinRequestCreator::new();
+
+        let mut phy: JoinRequestCreator<[u8;23], C> = JoinRequestCreator::default();
         let creds = &self.shared.credentials;
 
         let devnonce = [devnonce_bytes as u8, (devnonce_bytes >> 8) as u8];
@@ -239,10 +245,10 @@ impl<R> SendingJoin<R>
 where
     R: radio::PhyRxTx + Timings,
 {
-    pub fn handle_event(
+    pub fn handle_event<C: CryptoFactory + Default>(
         mut self,
         event: Event<R>,
-    ) -> (Device<R>, Result<Response, super::super::Error<R>>) {
+    ) -> (Device<R, C>, Result<Response, super::super::Error<R>>) {
         match event {
             // we are waiting for the async tx to complete
             Event::RadioEvent(radio_event) => {
@@ -252,7 +258,8 @@ where
                         match response {
                             // expect a complete transmit
                             radio::Response::TxDone(ms) => {
-                                let first_window = self.shared.region.get_join_accept_delay1() + ms;
+                                let first_window = (self.shared.region.get_join_accept_delay1() as i32
+                                    + ms as i32 + self.shared.radio.get_rx_window_offset_ms()) as u32;
                                 (
                                     self.into_waiting_for_rxwindow(first_window).into(),
                                     Ok(Response::TimeoutRequest(first_window)),
@@ -301,10 +308,10 @@ impl<R> WaitingForRxWindow<R>
 where
     R: radio::PhyRxTx + Timings,
 {
-    pub fn handle_event(
+    pub fn handle_event<C: CryptoFactory + Default>(
         mut self,
         event: Event<R>,
-    ) -> (Device<R>, Result<Response, super::super::Error<R>>) {
+    ) -> (Device<R, C>, Result<Response, super::super::Error<R>>) {
         match event {
             // we are waiting for a Timeout
             Event::Timeout => {
@@ -320,7 +327,6 @@ where
                     .radio
                     .handle_event(radio::Event::RxRequest(rx_config))
                 {
-                    // TODO: pass timeout
                     Ok(_) => {
                         let window_close: u32 = match self.join_rx_window {
                             // RxWindow1 one must timeout before RxWindow2
@@ -390,10 +396,10 @@ impl<R> WaitingForJoinResponse<R>
 where
     R: radio::PhyRxTx + Timings,
 {
-    pub fn handle_event(
+    pub fn handle_event<C: CryptoFactory + Default>(
         mut self,
         event: Event<R>,
-    ) -> (Device<R>, Result<Response, super::super::Error<R>>) {
+    ) -> (Device<R, C>, Result<Response, super::super::Error<R>>) {
         match event {
             // we are waiting for the async tx to complete
             Event::RadioEvent(radio_event) => {
@@ -401,10 +407,7 @@ where
                 match self.shared.radio.handle_event(radio_event) {
                     Ok(response) => match response {
                         radio::Response::RxDone(_quality) => {
-                            let packet =
-                                lorawan_parse(self.shared.radio.get_received_packet()).unwrap();
-
-                            if let PhyPayload::JoinAccept(join_accept) = packet {
+                            if let Ok(PhyPayload::JoinAccept(join_accept)) = lorawan_parse(self.shared.radio.get_received_packet(), C::default()) {
                                 if let JoinAcceptPayload::Encrypted(encrypted) = join_accept {
                                     let credentials = &self.shared.credentials;
 

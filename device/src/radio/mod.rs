@@ -34,6 +34,12 @@ pub enum Error<R>
 where
     R: PhyRxTx,
 {
+    TxRequestDuringTx,
+    TxRequestDuringRx,
+    RxRequestDuringTx,
+    RxRequestDuringRx,
+    CancelRxWhileIdle,
+    CancelRxDuringTx,
     PhyError(R::PhyError),
 }
 
