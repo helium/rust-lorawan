@@ -190,7 +190,7 @@ where
         }))
     }
 
-    pub fn get_fcnt_up(&mut self) -> Option<u32> {
+    pub fn get_fcnt_up(&self) -> Option<u32> {
         if let State::Session(session) = &self.state {
             Some(session.get_session_data().fcnt_up())
         } else {
@@ -198,7 +198,7 @@ where
         }
     }
 
-    pub fn get_session_keys(&mut self) -> Option<SessionKeys> {
+    pub fn get_session_keys(&self) -> Option<SessionKeys> {
         if let State::Session(session) = &self.state {
             Some(SessionKeys::copy_from_session_data(
                 session.get_session_data(),
