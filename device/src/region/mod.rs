@@ -1,8 +1,10 @@
 use lorawan_encoding::maccommands::ChannelMask;
 
 mod us915;
+mod cn470;
 
 pub use us915::US915;
+pub use cn470::CN470;
 
 pub trait Configuration {
     fn set_channel_mask(&mut self, channel_mask: ChannelMask);
