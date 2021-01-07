@@ -11,8 +11,7 @@ use mac::Mac;
 mod types;
 pub use types::*;
 
-mod us915;
-use us915::Configuration as RegionalConfiguration;
+pub mod region;
 
 mod state_machines;
 use core::marker::PhantomData;
@@ -22,12 +21,13 @@ pub use state_machines::{no_session, session};
 
 type TimestampMs = u32;
 
-pub struct Device<R, C>
+pub struct Device<R, C, REGION>
 where
     R: radio::PhyRxTx + Timings,
     C: CryptoFactory + Default,
+    REGION: region::Configuration,
 {
-    state: State<R>,
+    state: State<R, REGION>,
     crypto: PhantomData<C>,
 }
 
@@ -95,20 +95,22 @@ pub struct SendData<'a> {
     confirmed: bool,
 }
 
-pub enum State<R>
+pub enum State<R, REGION>
 where
     R: radio::PhyRxTx + Timings,
+    REGION: region::Configuration,
 {
-    NoSession(no_session::NoSession<R>),
-    Session(session::Session<R>),
+    NoSession(no_session::NoSession<R, REGION>),
+    Session(session::Session<R, REGION>),
 }
 
 use core::default::Default;
-impl<R> State<R>
+impl<R, REGION> State<R, REGION>
 where
     R: radio::PhyRxTx + Timings,
+    REGION: region::Configuration,
 {
-    fn new(shared: Shared<R>) -> Self {
+    fn new(shared: Shared<R, REGION>) -> Self {
         State::NoSession(no_session::NoSession::new(shared))
     }
 }
@@ -118,21 +120,20 @@ pub trait Timings {
     fn get_rx_window_duration_ms(&self) -> u32;
 }
 
-impl<R, C> Device<R, C>
+impl<R, C, REGION> Device <R, C, REGION>
 where
     R: radio::PhyRxTx + Timings,
     C: CryptoFactory + Default,
+    REGION: region::Configuration,
 {
     pub fn new(
+        region: REGION,
         radio: R,
         deveui: [u8; 8],
         appeui: [u8; 8],
         appkey: [u8; 16],
         get_random: fn() -> u32,
-    ) -> Device<R, C> {
-        let mut region = RegionalConfiguration::new();
-        region.set_subband(2);
-
+    ) -> Device<R, C, REGION> {
         Device {
             crypto: PhantomData::default(),
             state: State::new(Shared::new(
@@ -156,7 +157,7 @@ where
         shared.get_mut_credentials()
     }
 
-    fn get_shared(&mut self) -> &mut Shared<R> {
+    fn get_shared(&mut self) -> &mut Shared<R, REGION> {
         match &mut self.state {
             State::NoSession(state) => state.get_mut_shared(),
             State::Session(state) => state.get_mut_shared(),

@@ -45,6 +45,7 @@ else(Ready)║ ╚═════════════╝   ║              
 use super::super::no_session::{NoSession, SessionData};
 use super::super::State as SuperState;
 use super::super::*;
+use super::region;
 use super::CommonState;
 use as_slice::AsSlice;
 use generic_array::{typenum::U256, GenericArray};
@@ -54,14 +55,15 @@ use lorawan_encoding::{
     maccommands::SerializableMacCommand,
     parser::{parse_with_factory as lorawan_parse, *},
 };
-pub enum Session<R>
+pub enum Session<R, REGION>
 where
     R: radio::PhyRxTx + Timings,
+    REGION: region::Configuration + Sized,
 {
-    Idle(Idle<R>),
-    SendingData(SendingData<R>),
-    WaitingForRxWindow(WaitingForRxWindow<R>),
-    WaitingForRx(WaitingForRx<R>),
+    Idle(Idle<R, REGION>),
+    SendingData(SendingData<R, REGION>),
+    WaitingForRxWindow(WaitingForRxWindow<R, REGION>),
+    WaitingForRx(WaitingForRx<R, REGION>),
 }
 
 enum RxWindow {
@@ -69,16 +71,21 @@ enum RxWindow {
     _2(u32),
 }
 
-trait SessionState<R: radio::PhyRxTx + Timings> {
+trait SessionState<R, REGION>
+    where
+        R: radio::PhyRxTx + Timings,
+        REGION: region::Configuration + Sized,
+{
     fn get_session(&self) -> &SessionData;
 }
 
 macro_rules! into_state {
     ($($from:tt),*) => {
     $(
-        impl<R: radio::PhyRxTx + Timings, C: CryptoFactory + Default> From<$from<R>> for Device<R, C>
+        impl<R: radio::PhyRxTx + Timings, C: CryptoFactory + Default,
+        REGION: region::Configuration> From<$from<R, REGION>> for Device<R,C, REGION>
         {
-            fn from(state: $from<R>) -> Device<R, C> {
+            fn from(state: $from<R, REGION>) -> Device<R, C, REGION> {
                 Device {
                     crypto: PhantomData::default(),
                     state: SuperState::Session(Session::$from(state))
@@ -86,26 +93,27 @@ macro_rules! into_state {
             }
         }
 
-        impl<R: radio::PhyRxTx + Timings> SessionState<R> for $from<R> {
+        impl<R: radio::PhyRxTx + Timings, REGION: region::Configuration> SessionState<R, REGION> for $from<R, REGION> {
             fn get_session(&self) -> &SessionData {
                 &self.session
             }
         }
 
-        impl<R: radio::PhyRxTx + Timings> CommonState<R> for $from<R> {
-            fn get_mut_shared(&mut self) -> &mut Shared<R> {
+        impl<R: radio::PhyRxTx + Timings, REGION: region::Configuration> CommonState<R, REGION> for $from<R, REGION> {
+            fn get_mut_shared(&mut self) -> &mut Shared<R, REGION> {
                 &mut self.shared
             }
         }
     )*};
 }
 
-impl<R, C> From<Session<R>> for Device<R, C>
+impl<R, C, REGION> From<Session<R, REGION>> for Device<R,C, REGION>
 where
     R: radio::PhyRxTx + Timings,
     C: CryptoFactory + Default,
+    REGION: super::region::Configuration,
 {
-    fn from(session: Session<R>) -> Device<R, C> {
+    fn from(session: Session<R, REGION>) -> Device<R,C, REGION> {
         Device {
             state: SuperState::Session(session),
             crypto: PhantomData::default(),
@@ -134,15 +142,16 @@ where
     }
 }
 
-impl<R> Session<R>
+impl<R, REGION> Session<R, REGION>
 where
     R: radio::PhyRxTx + Timings,
+    REGION: region::Configuration + Sized,
 {
-    pub fn new(shared: Shared<R>, session: SessionData) -> Session<R> {
+    pub fn new(shared: Shared<R, REGION>, session: SessionData) -> Session<R, REGION> {
         Session::Idle(Idle { shared, session })
     }
 
-    pub fn get_mut_shared(&mut self) -> &mut Shared<R> {
+    pub fn get_mut_shared(&mut self) -> &mut Shared<R, REGION> {
         match self {
             Session::Idle(state) => state.get_mut_shared(),
             Session::SendingData(state) => state.get_mut_shared(),
@@ -163,7 +172,7 @@ where
     pub fn handle_event<C: CryptoFactory + Default>(
         self,
         event: Event<R>,
-    ) -> (Device<R, C>, Result<Response, super::super::Error<R>>) {
+    ) -> (Device<R, C, REGION>, Result<Response, super::super::Error<R>>) {
         match self {
             Session::Idle(state) => state.handle_event(event),
             Session::SendingData(state) => state.handle_event(event),
@@ -173,9 +182,10 @@ where
     }
 }
 
-impl<'a, R> Idle<R>
+impl<'a, R, REGION> Idle<R, REGION>
 where
     R: radio::PhyRxTx + Timings,
+    REGION: region::Configuration + Sized,
 {
     #[allow(clippy::match_wild_err_arm)]
     fn prepare_buffer<C: CryptoFactory + Default>(&mut self, data: &SendData) -> FcntUp {
@@ -214,7 +224,7 @@ where
     pub fn handle_event<C: CryptoFactory + Default>(
         mut self,
         event: Event<R>,
-    ) -> (Device<R, C>, Result<Response, super::super::Error<R>>) {
+    ) -> (Device<R, C, REGION>, Result<Response, super::super::Error<R>>) {
         match event {
             Event::SendDataRequest(send_data) => {
                 // encodes the packet and places it in send buffer
@@ -273,7 +283,7 @@ where
         }
     }
 
-    fn into_sending_data(self, confirmed: bool) -> SendingData<R> {
+    fn into_sending_data(self, confirmed: bool) -> SendingData<R, REGION> {
         SendingData {
             session: self.session,
             shared: self.shared,
@@ -281,7 +291,7 @@ where
         }
     }
 
-    fn into_waiting_for_rxwindow(self, confirmed: bool, time: u32) -> WaitingForRxWindow<R> {
+    fn into_waiting_for_rxwindow(self, confirmed: bool, time: u32) -> WaitingForRxWindow<R, REGION> {
         WaitingForRxWindow {
             session: self.session,
             shared: self.shared,
@@ -291,31 +301,34 @@ where
     }
 }
 
-pub struct Idle<R>
+pub struct Idle<R, REGION>
 where
     R: radio::PhyRxTx + Timings,
+    REGION: region::Configuration + Sized,
 {
-    shared: Shared<R>,
+    shared: Shared<R, REGION>,
     session: SessionData,
 }
 
-pub struct SendingData<R>
+pub struct SendingData<R, REGION>
 where
     R: radio::PhyRxTx + Timings,
+    REGION: region::Configuration + Sized,
 {
-    shared: Shared<R>,
+    shared: Shared<R, REGION>,
     session: SessionData,
     confirmed: bool,
 }
 
-impl<R> SendingData<R>
-where
-    R: radio::PhyRxTx + Timings,
+impl<R, REGION> SendingData<R, REGION>
+    where
+        R: radio::PhyRxTx + Timings,
+        REGION: region::Configuration + Sized,
 {
     pub fn handle_event<C: CryptoFactory + Default>(
         mut self,
         event: Event<R>,
-    ) -> (Device<R, C>, Result<Response, super::super::Error<R>>) {
+    ) -> (Device<R, C, REGION>, Result<Response, super::super::Error<R>>) {
         match event {
             // we are waiting for the async tx to complete
             Event::RadioEvent(radio_event) => {
@@ -346,7 +359,7 @@ where
         }
     }
 
-    fn into_waiting_for_rxwindow(self, confirmed: bool, time: u32) -> WaitingForRxWindow<R> {
+    fn into_waiting_for_rxwindow(self, confirmed: bool, time: u32) -> WaitingForRxWindow<R, REGION> {
         WaitingForRxWindow {
             session: self.session,
             shared: self.shared,
@@ -356,24 +369,26 @@ where
     }
 }
 
-pub struct WaitingForRxWindow<R>
+pub struct WaitingForRxWindow<R, REGION>
 where
     R: radio::PhyRxTx + Timings,
+    REGION: region::Configuration + Sized,
 {
-    shared: Shared<R>,
+    shared: Shared<R, REGION>,
     session: SessionData,
     confirmed: bool,
     rx_window: RxWindow,
 }
 
-impl<'a, R> WaitingForRxWindow<R>
+impl<'a, R, REGION> WaitingForRxWindow<R, REGION>
 where
     R: radio::PhyRxTx + Timings,
+    REGION: region::Configuration + Sized,
 {
     pub fn handle_event<C: CryptoFactory + Default>(
         mut self,
         event: Event<R>,
-    ) -> (Device<R, C>, Result<Response, super::super::Error<R>>) {
+    ) -> (Device<R, C, REGION>, Result<Response, super::super::Error<R>>) {
         match event {
             // we are waiting for a Timeout
             Event::TimeoutFired => {
@@ -432,11 +447,12 @@ where
     }
 }
 
-impl<R> From<WaitingForRxWindow<R>> for WaitingForRx<R>
+impl<R, REGION> From<WaitingForRxWindow<R, REGION>> for WaitingForRx<R, REGION>
 where
     R: radio::PhyRxTx + Timings,
+    REGION: region::Configuration + Sized,
 {
-    fn from(val: WaitingForRxWindow<R>) -> WaitingForRx<R> {
+    fn from(val: WaitingForRxWindow<R, REGION>) -> WaitingForRx<R, REGION> {
         WaitingForRx {
             shared: val.shared,
             session: val.session,
@@ -446,24 +462,27 @@ where
     }
 }
 
-pub struct WaitingForRx<R>
+pub struct WaitingForRx<R, REGION>
 where
     R: radio::PhyRxTx + Timings,
+    REGION: region::Configuration + Sized,
+
 {
-    shared: Shared<R>,
+    shared: Shared<R, REGION>,
     session: SessionData,
     confirmed: bool,
     rx_window: RxWindow,
 }
 
-impl<'a, R> WaitingForRx<R>
+impl<'a, R, REGION> WaitingForRx<R, REGION>
 where
     R: radio::PhyRxTx + Timings,
+    REGION: region::Configuration + Sized,
 {
     pub fn handle_event<C: CryptoFactory + Default>(
         mut self,
         event: Event<R>,
-    ) -> (Device<R, C>, Result<Response, super::super::Error<R>>) {
+    ) -> (Device<R, C, REGION>, Result<Response, super::super::Error<R>>) {
         match event {
             // we are waiting for the async tx to complete
             Event::RadioEvent(radio_event) => {
@@ -602,7 +621,7 @@ where
         }
     }
 
-    fn into_idle(self) -> Idle<R> {
+    fn into_idle(self) -> Idle<R, REGION> {
         Idle {
             shared: self.shared,
             session: self.session,
@@ -610,11 +629,11 @@ where
     }
 }
 
-fn data_rxwindow1_timeout<R: radio::PhyRxTx + Timings, C: CryptoFactory + Default>(
-    state: Session<R>,
+fn data_rxwindow1_timeout<R: radio::PhyRxTx + Timings, C: CryptoFactory + Default,  REGION: region::Configuration>(
+    state: Session<R, REGION>,
     confirmed: bool,
     timestamp_ms: TimestampMs,
-) -> (Device<R, C>, Result<Response, super::super::Error<R>>) {
+) -> (Device<R, C, REGION>, Result<Response, super::super::Error<R>>) {
     let (new_state, first_window) = match state {
         Session::Idle(state) => {
             let first_window = (state.shared.region.get_receive_delay1() as i32

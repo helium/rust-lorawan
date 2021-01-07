@@ -1,7 +1,9 @@
 use super::super::session::Session;
 use super::super::State as SuperState;
 use super::super::*;
+use super::region::Configuration as RegionalConfiguration;
 use super::{CommonState, Shared};
+
 use lorawan_encoding::{
     self,
     creator::JoinRequestCreator,
@@ -10,14 +12,15 @@ use lorawan_encoding::{
     parser::{parse_with_factory as lorawan_parse, *},
 };
 
-pub enum NoSession<R>
+pub enum NoSession<R, REGION>
 where
     R: radio::PhyRxTx + Timings,
+    REGION: RegionalConfiguration + Sized,
 {
-    Idle(Idle<R>),
-    SendingJoin(SendingJoin<R>),
-    WaitingForRxWindow(WaitingForRxWindow<R>),
-    WaitingForJoinResponse(WaitingForJoinResponse<R>),
+    Idle(Idle<R, REGION>),
+    SendingJoin(SendingJoin<R, REGION>),
+    WaitingForRxWindow(WaitingForRxWindow<R, REGION>),
+    WaitingForJoinResponse(WaitingForJoinResponse<R, REGION>),
 }
 
 enum JoinRxWindow {
@@ -28,12 +31,13 @@ enum JoinRxWindow {
 macro_rules! into_state {
     ($($from:tt),*) => {
     $(
-        impl<R, C> From<$from<R>> for Device<R,C>
+        impl<R, C, REGION> From<$from<R, REGION>> for Device<R,C, REGION>
         where
             R: radio::PhyRxTx + Timings,
-            C: CryptoFactory + Default
+            C: CryptoFactory + Default,
+            REGION: RegionalConfiguration + Sized,
         {
-            fn from(state: $from<R>) -> Device<R, C> {
+            fn from(state: $from<R, REGION>) -> Device<R, C, REGION> {
                 Device {
                     crypto: PhantomData::default(),
                     state: SuperState::NoSession(NoSession::$from(state))
@@ -41,8 +45,12 @@ macro_rules! into_state {
             }
         }
 
-        impl<R: radio::PhyRxTx + Timings> CommonState<R> for $from<R> {
-            fn get_mut_shared(&mut self) -> &mut Shared<R> {
+        impl<R, REGION> CommonState<R, REGION> for $from<R, REGION>
+        where
+            R: radio::PhyRxTx + Timings,
+            REGION: RegionalConfiguration + Sized,
+        {
+            fn get_mut_shared(&mut self) -> &mut Shared<R, REGION> {
                 &mut self.shared
             }
         }
@@ -56,27 +64,29 @@ into_state![
     WaitingForJoinResponse
 ];
 
-impl<R> From<NoSession<R>> for SuperState<R>
+impl<R, REGION> From<NoSession<R, REGION>>for SuperState<R, REGION>
 where
     R: radio::PhyRxTx + Timings,
+    REGION: RegionalConfiguration,
 {
-    fn from(no_session: NoSession<R>) -> SuperState<R> {
+    fn from(no_session: NoSession<R, REGION>) -> SuperState<R, REGION> {
         SuperState::NoSession(no_session)
     }
 }
 
-impl<R> NoSession<R>
+impl<R, REGION> NoSession<R, REGION>
 where
     R: radio::PhyRxTx + Timings,
+    REGION: RegionalConfiguration + Sized,
 {
-    pub fn new(shared: Shared<R>) -> NoSession<R> {
+    pub fn new(shared: Shared<R, REGION>) -> NoSession<R, REGION> {
         NoSession::Idle(Idle {
             shared,
             join_attempts: 0,
         })
     }
 
-    pub fn get_mut_shared(&mut self) -> &mut Shared<R> {
+    pub fn get_mut_shared(&mut self) -> &mut Shared<R, REGION> {
         match self {
             NoSession::Idle(state) => state.get_mut_shared(),
             NoSession::SendingJoin(state) => state.get_mut_shared(),
@@ -88,7 +98,7 @@ where
     pub fn handle_event<C: CryptoFactory + Default>(
         self,
         event: Event<R>,
-    ) -> (Device<R, C>, Result<Response, super::super::Error<R>>) {
+    ) -> (Device<R, C, REGION>, Result<Response, super::super::Error<R>>) {
         match self {
             NoSession::Idle(state) => state.handle_event(event),
             NoSession::SendingJoin(state) => state.handle_event(event),
@@ -118,22 +128,24 @@ where
 }
 type DevNonce = lorawan_encoding::parser::DevNonce<[u8; 2]>;
 
-pub struct Idle<R>
+pub struct Idle<R, REGION>
 where
     R: radio::PhyRxTx + Timings,
+    REGION: RegionalConfiguration + Sized,
 {
-    shared: Shared<R>,
+    shared: Shared<R, REGION>,
     join_attempts: usize,
 }
 
-impl<'a, R> Idle<R>
+impl<'a, R, REGION> Idle<R, REGION>
 where
     R: radio::PhyRxTx + Timings,
+    REGION: RegionalConfiguration + Sized,
 {
     pub fn handle_event<C: CryptoFactory + Default>(
         mut self,
         event: Event<R>,
-    ) -> (Device<R, C>, Result<Response, super::super::Error<R>>) {
+    ) -> (Device<R, C, REGION>, Result<Response, super::super::Error<R>>) {
         match event {
             // NewSession Request or a Timeout from previously failed Join attempt
             Event::NewSessionRequest | Event::TimeoutFired => {
@@ -213,7 +225,7 @@ where
         (devnonce_copy, tx_config)
     }
 
-    fn into_sending_join(self, devnonce: DevNonce) -> SendingJoin<R> {
+    fn into_sending_join(self, devnonce: DevNonce) -> SendingJoin<R, REGION> {
         SendingJoin {
             shared: self.shared,
             join_attempts: self.join_attempts + 1,
@@ -221,7 +233,7 @@ where
         }
     }
 
-    fn into_waiting_for_rxwindow(self, devnonce: DevNonce, time: u32) -> WaitingForRxWindow<R> {
+    fn into_waiting_for_rxwindow(self, devnonce: DevNonce, time: u32) -> WaitingForRxWindow<R, REGION> {
         WaitingForRxWindow {
             shared: self.shared,
             join_attempts: self.join_attempts + 1,
@@ -231,23 +243,25 @@ where
     }
 }
 
-pub struct SendingJoin<R>
+pub struct SendingJoin<R, REGION>
 where
     R: radio::PhyRxTx + Timings,
+    REGION: region::Configuration + Sized
 {
-    shared: Shared<R>,
+    shared: Shared<R, REGION>,
     join_attempts: usize,
     devnonce: DevNonce,
 }
 
-impl<R> SendingJoin<R>
+impl<R, REGION> SendingJoin<R, REGION>
 where
     R: radio::PhyRxTx + Timings,
+    REGION: region::Configuration + Sized,
 {
     pub fn handle_event<C: CryptoFactory + Default>(
         mut self,
         event: Event<R>,
-    ) -> (Device<R, C>, Result<Response, super::super::Error<R>>) {
+    ) -> (Device<R, C, REGION>, Result<Response, super::super::Error<R>>) {
         match event {
             // we are waiting for the async tx to complete
             Event::RadioEvent(radio_event) => {
@@ -286,7 +300,7 @@ where
         }
     }
 
-    fn into_waiting_for_rxwindow(self, time: u32) -> WaitingForRxWindow<R> {
+    fn into_waiting_for_rxwindow(self, time: u32) -> WaitingForRxWindow<R, REGION> {
         WaitingForRxWindow {
             shared: self.shared,
             join_attempts: self.join_attempts + 1,
@@ -296,24 +310,26 @@ where
     }
 }
 
-pub struct WaitingForRxWindow<R>
+pub struct WaitingForRxWindow<R, REGION>
 where
     R: radio::PhyRxTx + Timings,
+    REGION: region::Configuration + Sized,
 {
-    shared: Shared<R>,
+    shared: Shared<R, REGION>,
     join_attempts: usize,
     devnonce: DevNonce,
     join_rx_window: JoinRxWindow,
 }
 
-impl<R> WaitingForRxWindow<R>
+impl<R, REGION> WaitingForRxWindow<R, REGION>
 where
     R: radio::PhyRxTx + Timings,
+    REGION: region::Configuration + Sized,
 {
     pub fn handle_event<C: CryptoFactory + Default>(
         mut self,
         event: Event<R>,
-    ) -> (Device<R, C>, Result<Response, super::super::Error<R>>) {
+    ) -> (Device<R, C, REGION>, Result<Response, super::super::Error<R>>) {
         match event {
             // we are waiting for a Timeout
             Event::TimeoutFired => {
@@ -370,11 +386,12 @@ where
     }
 }
 
-impl<R> From<WaitingForRxWindow<R>> for WaitingForJoinResponse<R>
+impl<R, REGION> From<WaitingForRxWindow<R, REGION>> for WaitingForJoinResponse<R, REGION>
 where
     R: radio::PhyRxTx + Timings,
+    REGION: region::Configuration + Sized,
 {
-    fn from(val: WaitingForRxWindow<R>) -> WaitingForJoinResponse<R> {
+    fn from(val: WaitingForRxWindow<R, REGION>) -> WaitingForJoinResponse<R, REGION> {
         WaitingForJoinResponse {
             join_rx_window: val.join_rx_window,
             shared: val.shared,
@@ -384,24 +401,26 @@ where
     }
 }
 
-pub struct WaitingForJoinResponse<R>
+pub struct WaitingForJoinResponse<R, REGION>
 where
     R: radio::PhyRxTx + Timings,
+    REGION: region::Configuration + Sized,
 {
-    shared: Shared<R>,
+    shared: Shared<R, REGION>,
     join_attempts: usize,
     devnonce: DevNonce,
     join_rx_window: JoinRxWindow,
 }
 
-impl<R> WaitingForJoinResponse<R>
+impl<R, REGION> WaitingForJoinResponse<R, REGION>
 where
     R: radio::PhyRxTx + Timings,
+    REGION: region::Configuration + Sized,
 {
     pub fn handle_event<C: CryptoFactory + Default>(
         mut self,
         event: Event<R>,
-    ) -> (Device<R, C>, Result<Response, super::super::Error<R>>) {
+    ) -> (Device<R, C, REGION>, Result<Response, super::super::Error<R>>) {
         match event {
             // we are waiting for the async tx to complete
             Event::RadioEvent(radio_event) => {
@@ -479,11 +498,12 @@ where
     }
 }
 
-impl<R> From<WaitingForJoinResponse<R>> for Idle<R>
+impl<R, REGION> From<WaitingForJoinResponse<R, REGION>> for Idle<R, REGION>
 where
     R: radio::PhyRxTx + Timings,
+    REGION: RegionalConfiguration + Sized,
 {
-    fn from(val: WaitingForJoinResponse<R>) -> Idle<R> {
+    fn from(val: WaitingForJoinResponse<R, REGION>) -> Idle<R, REGION> {
         Idle {
             shared: val.shared,
             join_attempts: val.join_attempts,

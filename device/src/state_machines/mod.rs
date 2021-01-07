@@ -1,14 +1,14 @@
 use super::*;
 use lorawan_encoding::parser::DecryptedDataPayload;
-
+use super::region::Configuration as RegionalConfiguration;
 pub mod no_session;
 
 pub mod session;
 
-pub struct Shared<R: radio::PhyRxTx + Timings> {
+pub struct Shared<R: radio::PhyRxTx + Timings, REGION: RegionalConfiguration + Sized> {
     radio: R,
     credentials: Credentials,
-    region: RegionalConfiguration,
+    region: REGION,
     mac: Mac,
     // TODO: do something nicer for randomness
     get_random: fn() -> u32,
@@ -16,7 +16,7 @@ pub struct Shared<R: radio::PhyRxTx + Timings> {
     data_downlink: Option<DecryptedDataPayload<Vec<u8, U256>>>,
 }
 
-impl<R: radio::PhyRxTx + Timings> Shared<R> {
+impl<R: radio::PhyRxTx + Timings, REGION: RegionalConfiguration + Sized> Shared<R, REGION> {
     pub fn get_mut_radio(&mut self) -> &mut R {
         &mut self.radio
     }
@@ -29,15 +29,15 @@ impl<R: radio::PhyRxTx + Timings> Shared<R> {
     }
 }
 
-impl<R: radio::PhyRxTx + Timings> Shared<R> {
+impl<R: radio::PhyRxTx + Timings, REGION: RegionalConfiguration + Sized> Shared<R, REGION> {
     pub fn new(
         radio: R,
         credentials: Credentials,
-        region: RegionalConfiguration,
+        region: REGION,
         mac: Mac,
         get_random: fn() -> u32,
         buffer: Vec<u8, U256>,
-    ) -> Shared<R> {
+    ) -> Shared<R, REGION> {
         Shared {
             radio,
             credentials,
@@ -50,6 +50,6 @@ impl<R: radio::PhyRxTx + Timings> Shared<R> {
     }
 }
 
-trait CommonState<R: radio::PhyRxTx + Timings> {
-    fn get_mut_shared(&mut self) -> &mut Shared<R>;
+trait CommonState<R: radio::PhyRxTx + Timings, REGION: RegionalConfiguration + Sized> {
+    fn get_mut_shared(&mut self) -> &mut Shared<R, REGION>;
 }
