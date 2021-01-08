@@ -172,6 +172,10 @@ impl CN470 {
     }
 }
 impl RegionHandler for CN470 {
+    fn process_join_accept<T: core::convert::AsRef<[u8]>,C>(&mut self, _join_accept: &super::DecryptedJoinAcceptPayload<T, C>) {
+        // placeholder
+    }
+
     fn set_channel_mask(&mut self, _chmask: ChannelMask) {
         // one day this should truly be handled
     }
@@ -182,7 +186,7 @@ impl RegionHandler for CN470 {
     }
 
     fn get_join_frequency(&mut self, random: u8) -> u32 {
-        let channel = random & 0b111;
+        let channel = random % 96;
         self.last_tx = channel;
         UPLINK_MAP[channel as usize]
     }
@@ -194,11 +198,11 @@ impl RegionHandler for CN470 {
     }
 
     fn get_join_accept_frequency1(&self) -> u32 {
-        DOWNLINK_MAP[self.last_tx as usize /2 ]
+        DOWNLINK_MAP[self.last_tx as usize % 2 ]
     }
 
     fn get_rxwindow1_frequency(&self) -> u32 {
-        DOWNLINK_MAP[self.last_tx as usize/ 2 ]
+        DOWNLINK_MAP[self.last_tx as usize % 2 ]
     }
 
     fn get_join_accept_delay1(&self) -> u32 {

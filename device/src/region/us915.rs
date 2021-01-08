@@ -117,6 +117,9 @@ impl US915 {
     }
 }
 impl RegionHandler for US915 {
+    fn process_join_accept<T: core::convert::AsRef<[u8]>,C>(&mut self, _join_accept: &super::DecryptedJoinAcceptPayload<T, C>) {
+        // placeholder
+    }
     fn set_channel_mask(&mut self, _chmask: ChannelMask) {
         // one day this should truly be handled
     }

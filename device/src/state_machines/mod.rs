@@ -1,10 +1,12 @@
 use super::*;
-use lorawan_encoding::parser::DecryptedDataPayload;
+use lorawan_encoding::parser::{
+    DecryptedDataPayload, DecryptedJoinAcceptPayload
+};
 
 pub mod no_session;
 pub mod session;
 
-pub struct Shared<R: radio::PhyRxTx + Timings> {
+pub struct Shared<R: radio::PhyRxTx + Timings, T> {
     radio: R,
     credentials: Credentials,
     region: region::Configuration,
@@ -12,10 +14,15 @@ pub struct Shared<R: radio::PhyRxTx + Timings> {
     // TODO: do something nicer for randomness
     get_random: fn() -> u32,
     buffer: Vec<u8, U256>,
-    data_downlink: Option<DecryptedDataPayload<Vec<u8, U256>>>,
+    downlink: Option<Downlink<T>>,
 }
 
-impl<R: radio::PhyRxTx + Timings> Shared<R> {
+enum Downlink<T> {
+    Data(DecryptedDataPayload<Vec<u8, U256>>),
+    Join(DecryptedJoinAcceptPayload<Vec<u8, U256>, T>),
+}
+
+impl<R: radio::PhyRxTx + Timings, C: CryptoFactory + Default> Shared<R, C> {
     pub fn get_mut_radio(&mut self) -> &mut R {
         &mut self.radio
     }
@@ -24,11 +31,23 @@ impl<R: radio::PhyRxTx + Timings> Shared<R> {
     }
 
     pub fn take_data_downlink(&mut self) -> Option<DecryptedDataPayload<Vec<u8, U256>>> {
-        self.data_downlink.take()
+        if let Some(Downlink::Data(data)) = self.downlink.take() {
+            Some(data)
+        } else{
+            None
+        }
+    }
+
+    pub fn take_join_accept(&mut self) -> Option<DecryptedJoinAcceptPayload<Vec<u8, U256>, C>> {
+        if let Some(Downlink::Join(data)) = self.downlink.take() {
+            Some(data)
+        } else{
+            None
+        }
     }
 }
 
-impl<R: radio::PhyRxTx + Timings> Shared<R> {
+impl<R: radio::PhyRxTx + Timings, C: CryptoFactory + Default> Shared<R, C> {
     pub fn new(
         radio: R,
         credentials: Credentials,
@@ -36,7 +55,7 @@ impl<R: radio::PhyRxTx + Timings> Shared<R> {
         mac: Mac,
         get_random: fn() -> u32,
         buffer: Vec<u8, U256>,
-    ) -> Shared<R> {
+    ) -> Shared<R, C> {
         Shared {
             radio,
             credentials,
@@ -44,11 +63,11 @@ impl<R: radio::PhyRxTx + Timings> Shared<R> {
             mac,
             get_random,
             buffer,
-            data_downlink: None,
+            downlink: None,
         }
     }
 }
 
-trait CommonState<R: radio::PhyRxTx + Timings> {
-    fn get_mut_shared(&mut self) -> &mut Shared<R>;
+trait CommonState<R: radio::PhyRxTx + Timings, C: CryptoFactory + Default> {
+    fn get_mut_shared(&mut self) -> &mut Shared<R, C>;
 }

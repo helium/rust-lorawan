@@ -15,7 +15,6 @@ mod region;
 pub use region::Region;
 
 mod state_machines;
-use core::marker::PhantomData;
 use lorawan_encoding::{keys::CryptoFactory, parser::DecryptedDataPayload};
 use state_machines::Shared;
 pub use state_machines::{no_session, session};
@@ -27,8 +26,7 @@ where
     R: radio::PhyRxTx + Timings,
     C: CryptoFactory + Default,
 {
-    state: State<R>,
-    crypto: PhantomData<C>,
+    state: State<R, C>,
 }
 
 type FcntDown = u32;
@@ -95,20 +93,22 @@ pub struct SendData<'a> {
     confirmed: bool,
 }
 
-pub enum State<R>
+pub enum State<R, C>
 where
     R: radio::PhyRxTx + Timings,
+    C: CryptoFactory + Default,
 {
-    NoSession(no_session::NoSession<R>),
-    Session(session::Session<R>),
+    NoSession(no_session::NoSession<R, C>),
+    Session(session::Session<R, C>),
 }
 
 use core::default::Default;
-impl<R> State<R>
+impl<R, C> State<R, C>
 where
     R: radio::PhyRxTx + Timings,
+    C: CryptoFactory + Default,
 {
-    fn new(shared: Shared<R>) -> Self {
+    fn new(shared: Shared<R, C>) -> Self {
         State::NoSession(no_session::NoSession::new(shared))
     }
 }
@@ -134,7 +134,6 @@ where
         let region = region::Configuration::new(region);
 
         Device {
-            crypto: PhantomData::default(),
             state: State::new(Shared::new(
                 radio,
                 Credentials::new(appeui, deveui, appkey),
@@ -156,7 +155,7 @@ where
         shared.get_mut_credentials()
     }
 
-    fn get_shared(&mut self) -> &mut Shared<R> {
+    fn get_shared(&mut self) -> &mut Shared<R, C> {
         match &mut self.state {
             State::NoSession(state) => state.get_mut_shared(),
             State::Session(state) => state.get_mut_shared(),
