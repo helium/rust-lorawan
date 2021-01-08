@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-
+use super::RegionHandler;
 use lorawan_encoding::maccommands::ChannelMask;
 
 const UPLINK_CHANNEL_MAP: [[u32; 8]; 8] = [
@@ -106,25 +106,26 @@ const ADR_ACK_DELAY: usize = 32;
 const ACK_TIMEOUT: usize = 2; // random delay between 1 and 3 seconds
 
 #[derive(Default)]
-pub struct Configuration {
+pub struct US915 {
     subband: Option<u8>,
     last_tx: (u8, u8),
 }
 
-impl Configuration {
-    pub fn new() -> Configuration {
+impl US915 {
+    pub fn new() -> US915 {
         Self::default()
     }
-
-    pub fn set_channel_mask(&mut self, _chmask: ChannelMask) {
+}
+impl RegionHandler for US915 {
+    fn set_channel_mask(&mut self, _chmask: ChannelMask) {
         // one day this should truly be handled
     }
 
-    pub fn set_subband(&mut self, subband: u8) {
+    fn set_subband(&mut self, subband: u8) {
         self.subband = Some(subband);
     }
 
-    pub fn get_join_frequency(&mut self, random: u8) -> u32 {
+    fn get_join_frequency(&mut self, random: u8) -> u32 {
         let subband_channel = random & 0b111;
         let subband = if let Some(subband) = &self.subband {
             subband - 1
@@ -135,7 +136,7 @@ impl Configuration {
         UPLINK_CHANNEL_MAP[subband as usize][subband_channel as usize]
     }
 
-    pub fn get_data_frequency(&mut self, random: u8) -> u32 {
+    fn get_data_frequency(&mut self, random: u8) -> u32 {
         let subband_channel = random & 0b111;
         let subband = if let Some(subband) = &self.subband {
             subband - 1
@@ -146,27 +147,27 @@ impl Configuration {
         UPLINK_CHANNEL_MAP[subband as usize][subband_channel as usize]
     }
 
-    pub fn get_join_accept_frequency1(&self) -> u32 {
+    fn get_join_accept_frequency1(&self) -> u32 {
         DOWNLINK_CHANNEL_MAP[self.last_tx.1 as usize]
     }
 
-    pub fn get_rxwindow1_frequency(&self) -> u32 {
+    fn get_rxwindow1_frequency(&self) -> u32 {
         DOWNLINK_CHANNEL_MAP[self.last_tx.1 as usize]
     }
 
-    pub fn get_join_accept_delay1(&self) -> u32 {
+    fn get_join_accept_delay1(&self) -> u32 {
         JOIN_ACCEPT_DELAY1
     }
 
-    pub fn get_join_accept_delay2(&self) -> u32 {
+    fn get_join_accept_delay2(&self) -> u32 {
         JOIN_ACCEPT_DELAY2
     }
 
-    pub fn get_receive_delay1(&self) -> u32 {
+    fn get_receive_delay1(&self) -> u32 {
         RECEIVE_DELAY1
     }
 
-    pub fn get_receive_delay2(&self) -> u32 {
+    fn get_receive_delay2(&self) -> u32 {
         RECEIVE_DELAY2
     }
 }

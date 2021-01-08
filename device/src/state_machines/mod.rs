@@ -2,13 +2,12 @@ use super::*;
 use lorawan_encoding::parser::DecryptedDataPayload;
 
 pub mod no_session;
-
 pub mod session;
 
 pub struct Shared<R: radio::PhyRxTx + Timings> {
     radio: R,
     credentials: Credentials,
-    region: RegionalConfiguration,
+    region: region::Configuration,
     mac: Mac,
     // TODO: do something nicer for randomness
     get_random: fn() -> u32,
@@ -33,7 +32,7 @@ impl<R: radio::PhyRxTx + Timings> Shared<R> {
     pub fn new(
         radio: R,
         credentials: Credentials,
-        region: RegionalConfiguration,
+        region: region::Configuration,
         mac: Mac,
         get_random: fn() -> u32,
         buffer: Vec<u8, U256>,

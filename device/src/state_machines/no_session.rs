@@ -1,7 +1,7 @@
 use super::super::session::Session;
 use super::super::State as SuperState;
 use super::super::*;
-use super::{CommonState, Shared};
+use super::{CommonState, Shared, region::RegionHandler};
 use lorawan_encoding::{
     self,
     creator::JoinRequestCreator,

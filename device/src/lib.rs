@@ -11,8 +11,8 @@ use mac::Mac;
 mod types;
 pub use types::*;
 
-mod us915;
-use us915::Configuration as RegionalConfiguration;
+mod region;
+pub use region::Region;
 
 mod state_machines;
 use core::marker::PhantomData;
@@ -124,14 +124,14 @@ where
     C: CryptoFactory + Default,
 {
     pub fn new(
+        region: Region,
         radio: R,
         deveui: [u8; 8],
         appeui: [u8; 8],
         appkey: [u8; 16],
         get_random: fn() -> u32,
     ) -> Device<R, C> {
-        let mut region = RegionalConfiguration::new();
-        region.set_subband(2);
+        let region = region::Configuration::new(region);
 
         Device {
             crypto: PhantomData::default(),

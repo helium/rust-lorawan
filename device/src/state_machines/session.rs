@@ -45,7 +45,7 @@ else(Ready)║ ╚═════════════╝   ║              
 use super::super::no_session::{NoSession, SessionData};
 use super::super::State as SuperState;
 use super::super::*;
-use super::CommonState;
+use super::{CommonState, region::RegionHandler};
 use as_slice::AsSlice;
 use generic_array::{typenum::U256, GenericArray};
 use lorawan_encoding::{
