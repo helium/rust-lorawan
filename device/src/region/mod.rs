@@ -10,6 +10,7 @@ pub struct Configuration {
     state: State,
 }
 
+#[derive(Debug, Clone)]
 pub enum Region {
     US915,
     CN470
