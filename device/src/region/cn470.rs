@@ -103,53 +103,53 @@ const UPLINK_MAP: [u32; 96] = [
 
 const DOWNLINK_MAP: [u32; 48] = [
     500300000,
-500500000,
-500700000,
-500900000,
-501100000,
-501300000,
-501500000,
-501700000,
-501900000,
-502100000,
-502300000,
-502500000,
-502700000,
-502900000,
-503100000,
-503300000,
-503500000,
-503700000,
-503900000,
-504100000,
-504300000,
-504500000,
-504700000,
-504900000,
-505100000,
-505300000,
-505500000,
-505700000,
-505900000,
-506100000,
-506300000,
-506500000,
-506700000,
-506900000,
-507100000,
-507300000,
-507500000,
-507700000,
-507900000,
-508100000,
-508300000,
-508500000,
-508700000,
-508900000,
-509100000,
-509300000,
-509500000,
-509700000,
+    500500000,
+    500700000,
+    500900000,
+    501100000,
+    501300000,
+    501500000,
+    501700000,
+    501900000,
+    502100000,
+    502300000,
+    502500000,
+    502700000,
+    502900000,
+    503100000,
+    503300000,
+    503500000,
+    503700000,
+    503900000,
+    504100000,
+    504300000,
+    504500000,
+    504700000,
+    504900000,
+    505100000,
+    505300000,
+    505500000,
+    505700000,
+    505900000,
+    506100000,
+    506300000,
+    506500000,
+    506700000,
+    506900000,
+    507100000,
+    507300000,
+    507500000,
+    507700000,
+    507900000,
+    508100000,
+    508300000,
+    508500000,
+    508700000,
+    508900000,
+    509100000,
+    509300000,
+    509500000,
+    509700000,
 ];
 
 const RECEIVE_DELAY1: u32 = 1000;
@@ -172,6 +172,10 @@ impl CN470 {
     }
 }
 impl RegionHandler for CN470 {
+    fn process_join_accept<T: core::convert::AsRef<[u8]>,C>(&mut self, _join_accept: &super::DecryptedJoinAcceptPayload<T, C>) {
+        // placeholder
+    }
+
     fn set_channel_mask(&mut self, _chmask: ChannelMask) {
         // one day this should truly be handled
     }
@@ -182,7 +186,7 @@ impl RegionHandler for CN470 {
     }
 
     fn get_join_frequency(&mut self, random: u8) -> u32 {
-        let channel = random & 0b111;
+        let channel = random % 96;
         self.last_tx = channel;
         UPLINK_MAP[channel as usize]
     }
@@ -194,11 +198,11 @@ impl RegionHandler for CN470 {
     }
 
     fn get_join_accept_frequency1(&self) -> u32 {
-        DOWNLINK_MAP[self.last_tx as usize /2 ]
+        DOWNLINK_MAP[self.last_tx as usize % 2 ]
     }
 
     fn get_rxwindow1_frequency(&self) -> u32 {
-        DOWNLINK_MAP[self.last_tx as usize/ 2 ]
+        DOWNLINK_MAP[self.last_tx as usize % 2 ]
     }
 
     fn get_join_accept_delay1(&self) -> u32 {
