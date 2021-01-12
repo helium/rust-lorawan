@@ -163,7 +163,8 @@ const ACK_TIMEOUT: usize = 2; // random delay between 1 and 3 seconds
 
 #[derive(Default)]
 pub struct CN470 {
-    last_tx: u8
+    last_tx: u8,
+    cf_list: Option<[u32; 5]>
 }
 
 impl CN470 {
@@ -171,9 +172,22 @@ impl CN470 {
         Self::default()
     }
 }
+
+use super::JoinAccept;
+
+
 impl RegionHandler for CN470 {
-    fn process_join_accept<T: core::convert::AsRef<[u8]>,C>(&mut self, _join_accept: &super::DecryptedJoinAcceptPayload<T, C>) {
-        // placeholder
+    fn process_join_accept<T: core::convert::AsRef<[u8]>,C>(&mut self, join_accept: &super::DecryptedJoinAcceptPayload<T, C>) -> JoinAccept {
+        let mut new_cf_list = [0, 0, 0, 0, 0];
+        if let Some(cf_list) = join_accept.c_f_list() {
+            for (index, freq) in cf_list.iter().enumerate() {
+                new_cf_list[index] = freq.value();
+            }
+        }
+        self.cf_list = Some(new_cf_list);
+        JoinAccept {
+            cflist: Some(new_cf_list),
+        }
     }
 
     fn set_channel_mask(&mut self, _chmask: ChannelMask) {

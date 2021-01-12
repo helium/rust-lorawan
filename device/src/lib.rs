@@ -18,7 +18,8 @@ mod state_machines;
 use core::marker::PhantomData;
 use lorawan_encoding::{keys::CryptoFactory, parser::DecryptedDataPayload};
 use state_machines::Shared;
-pub use state_machines::{no_session, session};
+pub use state_machines::{no_session, session, JoinAccept};
+
 
 type TimestampMs = u32;
 
@@ -200,6 +201,10 @@ where
 
     pub fn take_data_downlink(&mut self) -> Option<DecryptedDataPayload<Vec<u8, U256>>> {
         self.get_shared().take_data_downlink()
+    }
+
+    pub fn take_join_accept(&mut self) -> Option<JoinAccept> {
+        self.get_shared().take_join_accept()
     }
 
     pub fn handle_event(self, event: Event<R>) -> (Self, Result<Response, Error<R>>) {

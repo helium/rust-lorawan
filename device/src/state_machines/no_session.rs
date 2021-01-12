@@ -414,8 +414,10 @@ where
                             {
                                 if let JoinAcceptPayload::Encrypted(encrypted) = join_accept {
                                     let credentials = &self.shared.credentials;
-
                                     let decrypt = encrypted.decrypt(credentials.appkey());
+                                    self.shared.downlink = Some(
+                                        super::Downlink::Join(
+                                            self.shared.region.process_join_accept(&decrypt)));
                                     if decrypt.validate_mic(credentials.appkey()) {
                                         let session = SessionData::derive_new(
                                             &decrypt,

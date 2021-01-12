@@ -523,7 +523,8 @@ where
                                                     );
                                                 }
 
-                                                self.shared.data_downlink = Some(decrypted);
+                                                self.shared.downlink = Some(
+                                                    super::Downlink::Data(decrypted));
 
                                                 // check if FCnt is used up
                                                 let response =

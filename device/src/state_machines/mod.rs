@@ -12,7 +12,17 @@ pub struct Shared<R: radio::PhyRxTx + Timings> {
     // TODO: do something nicer for randomness
     get_random: fn() -> u32,
     buffer: Vec<u8, U256>,
-    data_downlink: Option<DecryptedDataPayload<Vec<u8, U256>>>,
+    downlink: Option<Downlink>,
+}
+
+enum Downlink {
+    Data(DecryptedDataPayload<Vec<u8, U256>>),
+    Join(JoinAccept)
+}
+
+#[derive(Debug)]
+pub struct JoinAccept {
+    pub cflist: Option<[u32; 5]>
 }
 
 impl<R: radio::PhyRxTx + Timings> Shared<R> {
@@ -24,7 +34,19 @@ impl<R: radio::PhyRxTx + Timings> Shared<R> {
     }
 
     pub fn take_data_downlink(&mut self) -> Option<DecryptedDataPayload<Vec<u8, U256>>> {
-        self.data_downlink.take()
+        if let Some(Downlink::Data(payload)) = self.downlink.take() {
+            Some(payload)
+        } else {
+            None
+        }
+    }
+
+    pub fn take_join_accept(&mut self) -> Option<JoinAccept> {
+        if let Some(Downlink::Join(payload)) = self.downlink.take() {
+            Some(payload)
+        } else {
+            None
+        }
     }
 }
 
@@ -44,7 +66,7 @@ impl<R: radio::PhyRxTx + Timings> Shared<R> {
             mac,
             get_random,
             buffer,
-            data_downlink: None,
+            downlink: None,
         }
     }
 }

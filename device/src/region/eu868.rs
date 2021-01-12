@@ -29,8 +29,11 @@ impl EU868 {
         Self::default()
     }
 }
+
+use super::JoinAccept;
+
 impl RegionHandler for EU868 {
-    fn process_join_accept<T: core::convert::AsRef<[u8]>,C>(&mut self, join_accept: &super::DecryptedJoinAcceptPayload<T, C>) {
+    fn process_join_accept<T: core::convert::AsRef<[u8]>,C>(&mut self, join_accept: &super::DecryptedJoinAcceptPayload<T, C>) -> JoinAccept {
         let mut new_cf_list = [0, 0, 0, 0, 0];
         if let Some(cf_list) = join_accept.c_f_list() {
             for (index, freq) in cf_list.iter().enumerate() {
@@ -38,6 +41,9 @@ impl RegionHandler for EU868 {
             }
         }
         self.cf_list = Some(new_cf_list);
+        JoinAccept {
+            cflist: Some(new_cf_list),
+        }
     }
 
     fn set_channel_mask(&mut self, _chmask: ChannelMask) {
@@ -49,21 +55,21 @@ impl RegionHandler for EU868 {
     }
 
     fn get_join_frequency(&mut self, random: u8) -> u32 {
-        let channel = random & 0b11;
-        JOIN_CHANNELS[channel as usize]
+        let channel = random as usize % JOIN_CHANNELS.len();
+        JOIN_CHANNELS[channel]
     }
 
     fn get_data_frequency(&mut self, random: u8) -> u32 {
         if let Some(cf_list) = self.cf_list {
-            let channel = random & 0b111;
-            if channel <= 3 {
-                JOIN_CHANNELS[channel as usize]
+            let channel = random as usize & 0b111;
+            if channel < JOIN_CHANNELS.len() {
+                JOIN_CHANNELS[channel]
             } else {
-                cf_list[channel as usize - 3]
+                cf_list[channel - JOIN_CHANNELS.len()]
             }
         } else {
-            let channel = random & 0b11;
-            JOIN_CHANNELS[channel as usize]
+            let channel = random as usize  % JOIN_CHANNELS.len();
+            JOIN_CHANNELS[channel]
         }
     }
 
