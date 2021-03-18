@@ -1,5 +1,8 @@
 use lorawan_encoding::maccommands::ChannelMask;
 
+mod constants;
+use constants::*;
+
 mod us915;
 mod cn470;
 mod eu868;

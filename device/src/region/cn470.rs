@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use super::RegionHandler;
+use super::*;
 use lorawan_encoding::maccommands::ChannelMask;
 
 const UPLINK_MAP: [u32; 96] = [
@@ -151,15 +151,6 @@ const DOWNLINK_MAP: [u32; 48] = [
     509500000,
     509700000,
 ];
-
-const RECEIVE_DELAY1: u32 = 1000;
-const RECEIVE_DELAY2: u32 = RECEIVE_DELAY1 + 1000; // must be RECEIVE_DELAY + 1 s
-const JOIN_ACCEPT_DELAY1: u32 = 5000;
-const JOIN_ACCEPT_DELAY2: u32 = 6000;
-const MAX_FCNT_GAP: usize = 16384;
-const ADR_ACK_LIMIT: usize = 64;
-const ADR_ACK_DELAY: usize = 32;
-const ACK_TIMEOUT: usize = 2; // random delay between 1 and 3 seconds
 
 #[derive(Default)]
 pub struct CN470 {
