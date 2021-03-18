@@ -20,7 +20,6 @@ use lorawan_encoding::{keys::CryptoFactory, parser::DecryptedDataPayload};
 use state_machines::Shared;
 pub use state_machines::{no_session, session, JoinAccept};
 
-
 type TimestampMs = u32;
 
 pub struct Device<R, C>

@@ -111,11 +111,11 @@ impl US915 {
 use super::JoinAccept;
 
 impl RegionHandler for US915 {
-    fn process_join_accept<T: core::convert::AsRef<[u8]>,C>(&mut self, _join_accept: &super::DecryptedJoinAcceptPayload<T, C>) -> JoinAccept {
-        JoinAccept {
-            cflist: None,
-        }
-
+    fn process_join_accept<T: core::convert::AsRef<[u8]>, C>(
+        &mut self,
+        _join_accept: &super::DecryptedJoinAcceptPayload<T, C>,
+    ) -> JoinAccept {
+        JoinAccept { cflist: None }
     }
 
     fn set_channel_mask(&mut self, _chmask: ChannelMask) {

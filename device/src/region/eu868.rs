@@ -2,17 +2,13 @@
 use super::*;
 
 use lorawan_encoding::maccommands::ChannelMask;
-const JOIN_CHANNELS: [u32; 3] = [
-    868_100_000,
-    868_300_000,
-    868_500_000,
-];
+const JOIN_CHANNELS: [u32; 3] = [868_100_000, 868_300_000, 868_500_000];
 
 #[derive(Default)]
 pub struct EU868 {
     subband: Option<u8>,
     last_tx: (u8, u8),
-    cf_list: Option<[u32; 5]>
+    cf_list: Option<[u32; 5]>,
 }
 
 impl EU868 {
@@ -24,7 +20,10 @@ impl EU868 {
 use super::JoinAccept;
 
 impl RegionHandler for EU868 {
-    fn process_join_accept<T: core::convert::AsRef<[u8]>,C>(&mut self, join_accept: &super::DecryptedJoinAcceptPayload<T, C>) -> JoinAccept {
+    fn process_join_accept<T: core::convert::AsRef<[u8]>, C>(
+        &mut self,
+        join_accept: &super::DecryptedJoinAcceptPayload<T, C>,
+    ) -> JoinAccept {
         let mut new_cf_list = [0, 0, 0, 0, 0];
         if let Some(cf_list) = join_accept.c_f_list() {
             for (index, freq) in cf_list.iter().enumerate() {
@@ -59,7 +58,7 @@ impl RegionHandler for EU868 {
                 cf_list[channel - JOIN_CHANNELS.len()]
             }
         } else {
-            let channel = random as usize  % JOIN_CHANNELS.len();
+            let channel = random as usize % JOIN_CHANNELS.len();
             JOIN_CHANNELS[channel]
         }
     }

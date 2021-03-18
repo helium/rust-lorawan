@@ -17,12 +17,12 @@ pub struct Shared<R: radio::PhyRxTx + Timings> {
 
 enum Downlink {
     Data(DecryptedDataPayload<Vec<u8, U256>>),
-    Join(JoinAccept)
+    Join(JoinAccept),
 }
 
 #[derive(Debug)]
 pub struct JoinAccept {
-    pub cflist: Option<[u32; 5]>
+    pub cflist: Option<[u32; 5]>,
 }
 
 impl<R: radio::PhyRxTx + Timings> Shared<R> {

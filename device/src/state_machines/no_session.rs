@@ -1,7 +1,7 @@
 use super::super::session::Session;
 use super::super::State as SuperState;
 use super::super::*;
-use super::{CommonState, Shared, region::RegionHandler};
+use super::{region::RegionHandler, CommonState, Shared};
 use lorawan_encoding::{
     self,
     creator::JoinRequestCreator,
@@ -409,26 +409,26 @@ where
                 match self.shared.radio.handle_event(radio_event) {
                     Ok(response) => match response {
                         radio::Response::RxDone(_quality) => {
-                            if let Ok(PhyPayload::JoinAccept(join_accept)) =
+                            if let Ok(PhyPayload::JoinAccept(JoinAcceptPayload::Encrypted(
+                                encrypted,
+                            ))) =
                                 lorawan_parse(self.shared.radio.get_received_packet(), C::default())
                             {
-                                if let JoinAcceptPayload::Encrypted(encrypted) = join_accept {
-                                    let credentials = &self.shared.credentials;
-                                    let decrypt = encrypted.decrypt(credentials.appkey());
-                                    self.shared.downlink = Some(
-                                        super::Downlink::Join(
-                                            self.shared.region.process_join_accept(&decrypt)));
-                                    if decrypt.validate_mic(credentials.appkey()) {
-                                        let session = SessionData::derive_new(
-                                            &decrypt,
-                                            self.devnonce,
-                                            credentials,
-                                        );
-                                        return (
-                                            Session::new(self.shared, session).into(),
-                                            Ok(Response::JoinSuccess),
-                                        );
-                                    }
+                                let credentials = &self.shared.credentials;
+                                let decrypt = encrypted.decrypt(credentials.appkey());
+                                self.shared.downlink = Some(super::Downlink::Join(
+                                    self.shared.region.process_join_accept(&decrypt),
+                                ));
+                                if decrypt.validate_mic(credentials.appkey()) {
+                                    let session = SessionData::derive_new(
+                                        &decrypt,
+                                        self.devnonce,
+                                        credentials,
+                                    );
+                                    return (
+                                        Session::new(self.shared, session).into(),
+                                        Ok(Response::JoinSuccess),
+                                    );
                                 }
                             }
                             (self.into(), Ok(Response::NoUpdate))
