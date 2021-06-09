@@ -104,6 +104,7 @@ where
 
 #[derive(Debug)]
 pub enum Error {
+    DeviceDoesNotHaveOtaaCredentials,
     RadioEventWhileIdle,
     SendDataWhileNoSession,
     RadioEventWhileWaitingForJoinWindow,
@@ -141,34 +142,41 @@ where
         match event {
             // NewSession Request or a Timeout from previously failed Join attempt
             Event::NewSessionRequest | Event::TimeoutFired => {
-                let (devnonce, tx_config) = self.create_join_request::<C>();
-                let radio_event: radio::Event<R> =
-                    radio::Event::TxRequest(tx_config, &mut self.shared.buffer);
+                match self.create_join_request::<C>() {
+                    Ok((devnonce, tx_config)) => {
+                        let radio_event: radio::Event<R> =
+                            radio::Event::TxRequest(tx_config, &mut self.shared.buffer);
 
-                // send the transmit request to the radio
-                match self.shared.radio.handle_event(radio_event) {
-                    Ok(response) => {
-                        match response {
-                            // intermediate state where we wait for Join to complete sending
-                            // allows for asynchronous sending
-                            radio::Response::Txing => (
-                                self.into_sending_join(devnonce).into(),
-                                Ok(Response::JoinRequestSending),
-                            ),
-                            // directly jump to waiting for RxWindow
-                            // allows for synchronous sending
-                            radio::Response::TxDone(ms) => {
-                                let first_window =
-                                    self.shared.region.get_rx_delay(&Frame::Join, &Window::_1) + ms;
-                                (
-                                    self.into_waiting_for_rxwindow(devnonce, first_window)
-                                        .into(),
-                                    Ok(Response::TimeoutRequest(first_window)),
-                                )
+                        // send the transmit request to the radio
+                        match self.shared.radio.handle_event(radio_event) {
+                            Ok(response) => {
+                                match response {
+                                    // intermediate state where we wait for Join to complete sending
+                                    // allows for asynchronous sending
+                                    radio::Response::Txing => (
+                                        self.into_sending_join(devnonce).into(),
+                                        Ok(Response::JoinRequestSending),
+                                    ),
+                                    // directly jump to waiting for RxWindow
+                                    // allows for synchronous sending
+                                    radio::Response::TxDone(ms) => {
+                                        let first_window = self
+                                            .shared
+                                            .region
+                                            .get_rx_delay(&Frame::Join, &Window::_1)
+                                            + ms;
+                                        (
+                                            self.into_waiting_for_rxwindow(devnonce, first_window)
+                                                .into(),
+                                            Ok(Response::TimeoutRequest(first_window)),
+                                        )
+                                    }
+                                    _ => {
+                                        panic!("NoSession::Idle:: Unexpected radio response");
+                                    }
+                                }
                             }
-                            _ => {
-                                panic!("NoSession::Idle:: Unexpected radio response");
-                            }
+                            Err(e) => (self.into(), Err(e.into())),
                         }
                     }
                     Err(e) => (self.into(), Err(e.into())),
@@ -181,7 +189,9 @@ where
         }
     }
 
-    fn create_join_request<C: CryptoFactory + Default>(&mut self) -> (DevNonce, radio::TxConfig) {
+    fn create_join_request<C: CryptoFactory + Default>(
+        &mut self,
+    ) -> Result<(DevNonce, radio::TxConfig), Error> {
         let mut random = (self.shared.get_random)();
         // use lowest 16 bits for devnonce
         let devnonce_bytes = random as u16;
@@ -189,27 +199,31 @@ where
         self.shared.buffer.clear();
 
         let mut phy: JoinRequestCreator<[u8; 23], C> = JoinRequestCreator::default();
-        let creds = &self.shared.credentials;
+        if let Some(creds) = &self.shared.credentials {
+            let devnonce = [devnonce_bytes as u8, (devnonce_bytes >> 8) as u8];
 
-        let devnonce = [devnonce_bytes as u8, (devnonce_bytes >> 8) as u8];
+            phy.set_app_eui(EUI64::new(creds.appeui()).unwrap())
+                .set_dev_eui(EUI64::new(creds.deveui()).unwrap())
+                .set_dev_nonce(&devnonce);
+            let vec = phy.build(&creds.appkey()).unwrap();
 
-        phy.set_app_eui(EUI64::new(creds.appeui()).unwrap())
-            .set_dev_eui(EUI64::new(creds.deveui()).unwrap())
-            .set_dev_nonce(&devnonce);
-        let vec = phy.build(&creds.appkey()).unwrap();
+            let devnonce_copy = DevNonce::new(devnonce).unwrap();
 
-        let devnonce_copy = DevNonce::new(devnonce).unwrap();
+            self.shared.buffer.extend(vec);
 
-        self.shared.buffer.extend(vec);
-
-        // we'll use the rest for frequency and subband selection
-        random >>= 16;
-        (
-            devnonce_copy,
-            self.shared
-                .region
-                .create_tx_config(random as u8, self.shared.datarate, &Frame::Join),
-        )
+            // we'll use the rest for frequency and subband selection
+            random >>= 16;
+            Ok((
+                devnonce_copy,
+                self.shared.region.create_tx_config(
+                    random as u8,
+                    self.shared.datarate,
+                    &Frame::Join,
+                ),
+            ))
+        } else {
+            Err(Error::DeviceDoesNotHaveOtaaCredentials)
+        }
     }
 
     fn into_sending_join(self, devnonce: DevNonce) -> SendingJoin<R> {
@@ -416,21 +430,30 @@ where
                             ))) =
                                 lorawan_parse(self.shared.radio.get_received_packet(), C::default())
                             {
-                                let credentials = &self.shared.credentials;
-                                let decrypt = encrypted.decrypt(credentials.appkey());
-                                self.shared.downlink = Some(super::Downlink::Join(
-                                    self.shared.region.process_join_accept(&decrypt),
-                                ));
-                                if decrypt.validate_mic(credentials.appkey()) {
-                                    let session = SessionData::derive_new(
-                                        &decrypt,
-                                        self.devnonce,
-                                        credentials,
-                                    );
-                                    return (
-                                        Session::new(self.shared, session).into(),
-                                        Ok(Response::JoinSuccess),
-                                    );
+                                match &self.shared.credentials {
+                                    Some(credentials) => {
+                                        let decrypt = encrypted.decrypt(credentials.appkey());
+                                        self.shared.downlink = Some(super::Downlink::Join(
+                                            self.shared.region.process_join_accept(&decrypt),
+                                        ));
+                                        if decrypt.validate_mic(credentials.appkey()) {
+                                            let session = SessionData::derive_new(
+                                                &decrypt,
+                                                self.devnonce,
+                                                credentials,
+                                            );
+                                            return (
+                                                Session::new(self.shared, session).into(),
+                                                Ok(Response::JoinSuccess),
+                                            );
+                                        }
+                                    }
+                                    None => {
+                                        return (
+                                            self.into(),
+                                            Err(Error::DeviceDoesNotHaveOtaaCredentials.into()),
+                                        )
+                                    }
                                 }
                             }
                             (self.into(), Ok(Response::NoUpdate))
