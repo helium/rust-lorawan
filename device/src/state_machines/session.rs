@@ -211,7 +211,7 @@ where
                 self.shared.buffer.clear();
                 self.shared.buffer.extend(packet);
             }
-            Err(_) => panic!("Error assembling packet!"),
+            Err(e) => panic!("Error assembling packet! {} ", e),
         }
         fcnt
     }
